@@ -333,6 +333,11 @@ proc playerUpgradeHandler(request: Request) {.gcsafe.} =
     withLock stateLock:
       state.playerSockets[slot] = websocket
       state.socketSlots[websocket] = slot
+      ## The decision layer only calls the LLM for a seat with a live socket;
+      ## every other seat plays `courier` (design: "a seat that never
+      ## connected, or whose socket dies mid-episode, plays courier for every
+      ## remaining shift").
+      state.sim.cogs[slot].connected = true
       echo "chemistry: player slot ", slot, " connected (",
         state.playerSockets.len, "/", state.config.numAgents, ")"
     websocket.send($ %*{
@@ -413,6 +418,11 @@ proc websocketHandler(
           state.socketSlots.del(websocket)
           if state.playerSockets.getOrDefault(slot) == websocket:
             state.playerSockets.del(slot)
+            ## The socket died mid-episode: this seat plays `courier` from
+            ## here on rather than being prompted with nobody listening.
+            state.sim.cogs[slot].connected = false
+            echo "chemistry: player slot ", slot,
+              " disconnected; playing courier for the rest of the episode"
         state.globalSockets.excl(websocket)
         state.viewers.del(websocket)
 

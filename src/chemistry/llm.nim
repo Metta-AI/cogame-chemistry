@@ -576,7 +576,11 @@ proc decideAll*(
   var open: seq[int]
   for slot in 0 ..< Seats:
     let kind = scripted[slot]
-    if kind != skNone or client.disabled:
+    ## A seat that never connected, or whose socket died mid-episode, plays
+    ## `courier` for every remaining shift: there is no operator behind it to
+    ## prompt, so an LLM call would spend the budget on an empty guidance
+    ## block. The server owns `connected`.
+    if kind != skNone or client.disabled or not sim.cogs[slot].connected:
       result[slot] = sim.scriptedOrder(slot,
         (if kind == skNone: skCourier else: kind))
     else:

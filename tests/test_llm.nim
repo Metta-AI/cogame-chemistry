@@ -14,6 +14,10 @@ proc freshSim(cycles = 3, distractorPeriod = 2): Sim =
   config.llmTimeoutSeconds = 5
   result = initSim(config)
   result.logEnabled = false
+  ## The server marks a seat connected when its player socket upgrades; the
+  ## decision layer only calls the LLM for connected seats.
+  for slot in 0 ..< Seats:
+    result.cogs[slot].connected = true
 
 suite "extractJsonObject is tolerant":
   test "a markdown-fenced reply":
@@ -154,6 +158,37 @@ suite "degrade, never hang":
     check client.lastBatchSize == 0
     for slot in 0 ..< Seats:
       check orders[slot].source == osScripted
+
+  test "a seat that never connected plays courier and never enters the batch":
+    ## Design: "a seat that never connected, or whose socket dies
+    ## mid-episode, plays `courier` for every remaining shift." Without this
+    ## the seat is issued a request whose operator block is empty. The
+    ## transport is the same closed port as above, so the six connected seats
+    ## fail fast and land on the fallback while the two unconnected ones were
+    ## never asked at all.
+    putEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME", "http://127.0.0.1:9/bedrock")
+    putEnv("AWS_BEARER_TOKEN_BEDROCK", "not-a-real-token")
+    defer:
+      delEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME")
+      delEnv("AWS_BEARER_TOKEN_BEDROCK")
+    var sim = freshSim()
+    sim.cogs[2].connected = false
+    sim.cogs[5].connected = false
+    let client = newLlmClient(sim.config)
+    check not client.disabled
+    var prompts = newSeq[string](Seats)
+    var scripted = newSeq[ScriptKind](Seats)
+    let orders = client.decideAll(sim, prompts, scripted)
+    check client.lastBatchSize == Seats - 2
+    for slot in [2, 5]:
+      let courier = sim.courierOrder(slot)
+      check orders[slot].source == osScripted
+      check orders[slot].job == courier.job
+      check orders[slot].hasMolecule == courier.hasMolecule
+      if courier.hasMolecule:
+        check orders[slot].molecule == courier.molecule
+    for slot in [0, 1, 3, 4, 6, 7]:
+      check orders[slot].source == osFallback
 
 suite "the observation and the prompts":
   let sim = freshSim()

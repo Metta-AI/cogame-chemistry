@@ -1845,6 +1845,37 @@ body[data-embed] #board { top: 0; height: 100%; }
      `markBeat`: a game-block `function markBeat` hoists over the chrome alias
      block's `var markBeat = C.markBeat` and silently kills every scrubber
      beat (tandem, 2026-08-23).
+
+     EVERY OTHER EDIT INSIDE THE INHERITED REGION, and why each one is
+     unavoidable (a diff against
+     /workspace/starters/coworld-ctf/client/replay_broadcast.html shows these
+     and nothing else):
+
+       1. `<title>` — the page identifies the game it is showing.
+       2. `BOARD_W` / `BOARD_H` 1235x659 -> 1536x864 — the board's NATIVE
+          pixel size, 32x18 cells at 48 px. It drives BOARD_ASPECT and the
+          letterbox fit; a CTF-sized constant would letterbox every frame
+          wrongly.
+       3. The locker-room `LK_BOTS` table, its caption and prep-talk
+          literals — the starter's four CTF squads named CTF soldiers whose
+          portrait files no longer exist. The design's art section replaces
+          them with the eight chemistry cogs and their portraits, so the
+          table names those instead.
+       4. `onFirstFrame` / `onTransform` no longer call `syncViewUi` — that
+          function drove `#viewpanel`, which is removed above. This is the
+          note's own "the JS branches that touch them" allowance.
+       5. The starter's game renderers — `renderScorebug`, `renderClock`,
+          `applyEvent`, `renderEndcard`, `ingestBeats`, `ingestCapHearts`,
+          `renderPov`, `renderMismatch`, `ingestFpMap` — are replaced in
+          `onFrame` by `CHEM_HOOKS.*` delegation, with the CTF bodies
+          deleted and a `window.CHEM` bridge published for this block. Those
+          bodies drew flags, capture hearts, first-person POV and the
+          re-simulation mismatch warning: every one reads CTF-only state or
+          an element removed above, and the design hands the surfaces they
+          drew (plates, clock, feed rows, end card, beats) to THIS block.
+          The delegation is the seam; the ingest, transport, locker room,
+          layout and `relayout()` above are untouched, which is what keeps
+          the inherited chrome the starter's rather than a lookalike.
      ============================================================ -->
 <style>
 /* The locker-room curtain fades over ~1.5s; without this it swallows the

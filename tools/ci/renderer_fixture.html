@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>chemistry — worst-case renderer fixture</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0704; }
+</style>
+</head>
+<body>
+<!--
+  The worst-case renderer fixture (design note `## Tests`, item 9).
+
+  `tools/ci/docker_smoke.sh` runs with no ANTHROPIC_API_KEY, so every seat in
+  the replay CI produces plays the scripted baseline and a scripted baseline
+  emits no LLM text: EVERY replay CI can load carries zero full-length `say`
+  and zero `notes`. Nothing that plays a replay can exercise the chrome that
+  draws them (cogchemists, 2026-08-24).
+
+  So this page loads the REAL chrome -- client/replay_broadcast.html spliced
+  exactly the way Dockerfile.replay-viewer splices it, with a stub core in
+  place of the wasm board -- and pumps it frames whose every seat carries a
+  full-cap 80-rune `say` and a full-cap 320-rune `notes`, at several canvas
+  sizes down to the 360px featured-match floor. It self-checks its own string
+  lengths, draws the same captions onto the board canvas so
+  `--strict-text-bounds` has something to measure, and reports through the
+  same two signals the bundle uses: data-replay-loaded / data-replay-error.
+
+  ci.yml serves the repo root over HTTP and opens this file with
+  `viewer_smoke.mjs --url ... --strict-text-bounds`.
+-->
+<script>
+(function () {
+  'use strict';
+
+  // 80 runes exactly: the server's MaxSayLen, in multi-byte runes so a byte
+  // cut anywhere in the chain would show up as mojibake here.
+  var SAY = 'Cobalt is cold \u2014 I bring r\u00e9sin, someone bring brine, ' +
+    'and nobody touch the glitte';
+  // 320 runes exactly: the server's MaxNotesLen.
+  var NOTES = (
+    'amber at 7 and safe; cobalt died in shift 3 because nobody covered ' +
+    'brine. Borax says it holds spark to Amber all game, and it has. Gilt ' +
+    'keeps hauling quartz to its home cell and scoring nothing for it. ' +
+    'Room needs six deliveries a shift to hold steady; last shift we made ' +
+    'four, so somebody has to stop foraging and take a lane befo');
+
+  function runeLen(text) { return Array.from(text).length; }
+
+  function fail(message) {
+    document.documentElement.setAttribute('data-replay-error', String(message));
+    var pre = document.createElement('pre');
+    pre.style.cssText = 'color:#e0523a;font:14px monospace;padding:1rem';
+    pre.textContent = 'renderer fixture failed: ' + message;
+    document.body.appendChild(pre);
+  }
+
+  // Pad/trim to the exact caps so the fixture asserts the real boundary.
+  function toRunes(text, count) {
+    var runes = Array.from(text);
+    while (runes.length < count) runes.push('\u00b7');
+    return runes.slice(0, count).join('');
+  }
+  SAY = toRunes(SAY, 80);
+  NOTES = toRunes(NOTES, 320);
+  if (runeLen(SAY) !== 80 || runeLen(NOTES) !== 320) {
+    fail('fixture strings are not at the caps');
+    return;
+  }
+
+  var ALIASES = ['Argon', 'Borax', 'Cinder', 'Dram',
+                 'Ember', 'Flint', 'Gilt', 'Hob'];
+  var COLORS = ['red', 'orange', 'yellow', 'lime',
+                'light blue', 'blue', 'pink', 'white'];
+  var POLICIES = ['chemistry-foreman', 'chemistry-courier',
+                  'chemistry-courier', 'chemistry-metabolist',
+                  'chemistry-courier', 'chemistry-freeloader',
+                  'chemistry-courier', 'chemistry-freeloader'];
+  var CYCLES = ['amber', 'beryl', 'cobalt'];
+  var SPECIES = ['resin', 'spark', 'brine', 'glitter', 'quartz'];
+  var MAX_TICK = 720;
+
+  function frame(tick, phase) {
+    var teams = {};
+    CYCLES.forEach(function (name, index) {
+      var charge = [0, 7, 12][index];
+      teams[name] = {
+        lives: charge, policies: [name.charAt(0).toUpperCase() + name.slice(1)],
+        charge: charge, chargeMax: 12,
+        status: charge === 0 ? 'COLD' : (index === 1 ? 'STARVING' : 'RUNNING'),
+        stock: [index, 2 - index < 0 ? 0 : 2 - index],
+        feed: [SPECIES[index], SPECIES[(index + 1) % 3]],
+        cold: 3, yieldNow: 1 + Math.min(12, charge + 1) / 3 | 0
+      };
+    });
+    var roster = ALIASES.map(function (alias, slot) {
+      return {
+        s: slot, name: alias, pol: POLICIES[slot], col: COLORS[slot],
+        cell: [2 + slot, 2 + slot], carry: SPECIES[slot % 5],
+        ate: 20 - slot, dl: slot * 3, md: slot, hd: (7 - slot) * 2,
+        job: 'supply ' + SPECIES[slot % 3] + ' \u2192 ' + CYCLES[slot % 3],
+        say: SAY, alive: true, lives: 0
+      };
+    });
+    var events = ALIASES.map(function (alias, slot) {
+      return {
+        t: tick, k: 'order', seat: slot, shift: 4,
+        job: 'supply', sp: SPECIES[slot % 3], rx: CYCLES[slot % 3],
+        source: slot % 3 === 0 ? 'llm' : 'fallback', clamped: false,
+        say: SAY, notes: NOTES, latencyMs: 900
+      };
+    });
+    events.push({ t: tick, k: 'misdrop', seat: 6, sp: 'glitter', rx: 'beryl' });
+    events.push({ t: tick, k: 'cold', rx: 'amber' });
+    events.push({ t: tick, k: 'restart', rx: 'amber' });
+    var pts = [];
+    for (var t = 0; t <= MAX_TICK; t += 30) pts.push([t, t % 13, t % 11, t % 7]);
+    var state = {
+      t: tick, mt: MAX_TICK, mx: MAX_TICK, st: 0, ph: phase, lob: 0,
+      pl: true, sp: 1, lp: true, sk: false, ff: false, en: true, mm: -1,
+      bs: 1, pov: -1,
+      shift: Math.max(1, Math.ceil(tick / 60)), shifts: 12, tps: 60,
+      variant: 'three-cycles-plentiful-distractors', dist: 2,
+      teams: teams, roster: roster, events: events,
+      lead: { teams: CYCLES, pts: pts },
+      beats: [
+        { t: 60, k: 'shift', n: 1 }, { t: 120, k: 'shift', n: 2 },
+        { t: 352, k: 'cold', rx: 'cobalt' },
+        { t: 471, k: 'restart', rx: 'cobalt' },
+        { t: 600, k: 'famine' },
+        { t: MAX_TICK, k: 'gameover' }
+      ]
+    };
+    if (phase === 'gameover') {
+      state.over = {
+        winner: 'Argon', winnerPolicy: 'chemistry-foreman', draw: false,
+        ending: 'shift_limit', reason: 'complete',
+        scores: roster.map(function (p) { return p.ate; }),
+        foodMade: 94, foodRotted: 6, coldStarts: 1
+      };
+      state.hold = 4;
+    }
+    return JSON.stringify(state);
+  }
+
+  var CORE_STUB =
+    '(function () {' +
+    '  window.BroadcastCore = { create: function (config) {' +
+    '    window.__chemPump = config.onText || function () {};' +
+    '    var transform = { scale: 1, offsetX: 0, offsetY: 0, nativeW: 1536,' +
+    '      nativeH: 864, zoom: 1, minZoom: 1, maxZoom: 12, fitScale: 1,' +
+    '      focusX: 768, focusY: 432, visW: 1536, visH: 864 };' +
+    '    return {' +
+    '      start: function () { if (config.onStatus) config.onStatus("open"); },' +
+    '      ingest: function () {},' +
+    '      sendCommand: function (text) { window.__chemCommands.push(text); },' +
+    '      clickMap: function () {},' +
+    '      getTransform: function () { return transform; },' +
+    '      setViewportFit: function () {},' +
+    '      setViewportSize: function () {},' +
+    '      getPaceStats: function () { return { draws: 1 }; },' +
+    '      zoomAt: function () {}, setZoom: function () {},' +
+    '      panBy: function () {}, panByMap: function () {},' +
+    '      panTo: function () {}, resetView: function () {},' +
+    '      attachMinimap: function () {}, stop: function () {}' +
+    '    };' +
+    '  } };' +
+    '  window.__chemCommands = [];' +
+    '}());';
+
+  var HARNESS =
+    '(function () {' +
+    '  var SIZES = [360, 620, 900, 1280];' +
+    '  var say = window.__chemFixture.say;' +
+    '  function paintBoard(width) {' +
+    '    var canvas = document.getElementById("board");' +
+    '    if (!canvas) return;' +
+    '    var rect = canvas.getBoundingClientRect();' +
+    '    canvas.width = Math.max(64, Math.round(rect.width || width));' +
+    '    canvas.height = Math.max(64, Math.round(rect.height || width * 0.5625));' +
+    '    var ctx = canvas.getContext("2d");' +
+    '    ctx.clearRect(0, 0, canvas.width, canvas.height);' +
+    '    ctx.font = "12px sans-serif";' +
+    '    ctx.fillStyle = "#f2e8d8";' +
+    '    ctx.textBaseline = "top";' +
+    '    var line = say;' +
+    '    while (line.length > 1 && ctx.measureText(line).width > canvas.width - 68) {' +
+    '      line = line.slice(0, -1);' +
+    '    }' +
+    '    for (var slot = 0; slot < 8; slot++) {' +
+    '      var y = 6 + slot * 16;' +
+    '      if (y + 14 > canvas.height) break;' +
+    '      ctx.fillText(window.__chemFixture.aliases[slot].toUpperCase(), 4, y);' +
+    '      ctx.fillText(line, 60, y);' +
+    '    }' +
+    '  }' +
+    '  function step(index) {' +
+    '    if (index >= SIZES.length) {' +
+    '      document.documentElement.setAttribute("data-replay-loaded", "true");' +
+    '      return;' +
+    '    }' +
+    '    var width = SIZES[index];' +
+    '    var viewport = document.getElementById("viewport");' +
+    '    viewport.style.width = width + "px";' +
+    '    viewport.style.height = Math.round(width * 0.62) + "px";' +
+    '    window.dispatchEvent(new Event("resize"));' +
+    '    try {' +
+    '      window.__chemPump(window.__chemFixture.frame(120 + index * 60, "playing"));' +
+    '      window.__chemPump(window.__chemFixture.frame(720, "gameover"));' +
+    '      paintBoard(width);' +
+    '    } catch (error) {' +
+    '      document.documentElement.setAttribute("data-replay-error",' +
+    '        "chrome threw at " + width + "px: " + (error && error.message || error));' +
+    '      return;' +
+    '    }' +
+    '    setTimeout(function () { step(index + 1); }, 220);' +
+    '  }' +
+    '  window.addEventListener("error", function (event) {' +
+    '    document.documentElement.setAttribute("data-replay-error",' +
+    '      "uncaught: " + (event.message || "error"));' +
+    '  });' +
+    '  setTimeout(function () { step(0); }, 120);' +
+    '}());';
+
+  var WIRE = 'window.CTF_WIRE={speeds:[1,2,3,4,8,16],fps:24,' +
+    'chromeSpriteId:4090};';
+
+  function tag(body) { return '<scr' + 'ipt>' + body + '</scr' + 'ipt>'; }
+
+  Promise.all([
+    fetch('../../client/replay_broadcast.html').then(function (r) {
+      if (!r.ok) throw new Error('replay_broadcast.html HTTP ' + r.status);
+      return r.text();
+    }),
+    fetch('../../client/chrome_common.js').then(function (r) {
+      if (!r.ok) throw new Error('chrome_common.js HTTP ' + r.status);
+      return r.text();
+    })
+  ]).then(function (parts) {
+    var page = parts[0];
+    var chrome = parts[1];
+    if (page.indexOf('CHEMISTRY additions to the inherited coworld-ctf chrome') < 0) {
+      throw new Error('the page is missing its CHEMISTRY game block');
+    }
+    var spliced = page
+      .replace('<!-- WIRE_CONSTANTS -->', tag(WIRE))
+      .replace('<!-- CHROME_COMMON -->', tag(chrome))
+      .replace('<!-- BROADCAST_CORE -->', tag(CORE_STUB))
+      // The bundle serves its art next to index.html; this fixture is two
+      // directories down, so point the page's two asset bases at the repo.
+      .split("COG_BASE + '/art/lockerroom'").join("'../../client/art/lockerroom'")
+      .split("url('./font.ttf')").join("url('../../data/font.ttf')")
+      .split('url("./font.ttf")').join('url("../../data/font.ttf")');
+    var fixture = 'window.__chemFixture = {' +
+      'say: ' + JSON.stringify(SAY) + ',' +
+      'notes: ' + JSON.stringify(NOTES) + ',' +
+      'aliases: ' + JSON.stringify(ALIASES) + ',' +
+      'frame: ' + frame.toString() + ',' +
+      'ALIASES: ' + JSON.stringify(ALIASES) + '};';
+    // frame() closes over module-scope constants, so hand them across too.
+    var preamble = 'var SAY = ' + JSON.stringify(SAY) + ';' +
+      'var NOTES = ' + JSON.stringify(NOTES) + ';' +
+      'var ALIASES = ' + JSON.stringify(ALIASES) + ';' +
+      'var COLORS = ' + JSON.stringify(COLORS) + ';' +
+      'var POLICIES = ' + JSON.stringify(POLICIES) + ';' +
+      'var CYCLES = ' + JSON.stringify(CYCLES) + ';' +
+      'var SPECIES = ' + JSON.stringify(SPECIES) + ';' +
+      'var MAX_TICK = ' + MAX_TICK + ';';
+    document.open();
+    document.write(spliced.replace('</body>',
+      tag(preamble + fixture) + tag(HARNESS) + '</body>'));
+    document.close();
+  }).catch(function (error) {
+    fail(error && error.message ? error.message : String(error));
+  });
+}());
+</script>
+</body>
+</html>

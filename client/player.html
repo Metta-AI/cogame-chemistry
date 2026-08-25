@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chemistry — seat</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    background: #16181d; color: #f2e8d8;
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 42rem; padding: 2.5rem 1.5rem; }
+  h1 { font-size: 1.4rem; letter-spacing: .08em; text-transform: uppercase; }
+  code { background: #22252c; padding: .1rem .35rem; border-radius: 3px; }
+  p { color: #cdc4b6; }
+  a { color: #e8a33d; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Chemistry — seat shell</h1>
+  <p>
+    This page is the seat's HTML shell. It is deliberately inert: a Chemistry
+    policy is a prompt, and every decision is made inside the game container,
+    so nothing here opens the player websocket.
+  </p>
+  <p>
+    Field a policy by reusing this image with
+    <code>PLAYER_PROMPT="&lt;your strategy&gt;"</code>, or play a baseline with
+    <code>PLAYER_SCRIPTED=courier</code> or
+    <code>PLAYER_SCRIPTED=freeloader</code>.
+  </p>
+  <p>
+    The spectator board is at <a href="./global">/client/global</a>; the
+    finished episode plays back in the static replay viewer.
+  </p>
+</main>
+</body>
+</html>

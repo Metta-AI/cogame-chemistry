@@ -1,0 +1,33 @@
+[
+  {
+    "name": "chemistry-foreman",
+    "run": "/bin/chemistry-player",
+    "env": {
+      "PLAYER_PROMPT": "You are the shift foreman. Before anything else, read the three reactors: any cycle at charge 0 is a hole in the floor - restarting it costs three of each feedstock and makes no food, so never let one fall to 1 without covering it. Each shift, pick the single lane (reactor + feedstock) whose stock is lowest on the reactor with the lowest charge, and take it. Announce your lane in `say` in the form 'resin to Amber' and keep it for as long as nobody else claims it, so the others can fill the lanes you left. Never carry glitter or quartz - they are inert, and dropping one on a vat destroys it and wastes your whole shift. Only forage when all three reactors have both stocks at 2 or more. Keep notes of which alias covered which lane last shift.",
+      "USE_BEDROCK": "true"
+    }
+  },
+  {
+    "name": "chemistry-metabolist",
+    "run": "/bin/chemistry-player",
+    "env": {
+      "PLAYER_PROMPT": "You play the catalyst, not the calendar. Charge compounds: a vat at charge 9 pays three food a reaction and a vat at charge 3 pays two, so pour surplus into whichever vat is already highest **once every vat is above 2**, and starve nothing to do it. Compute each shift how many deliveries the room needs to hold steady - one reaction per vat per shift, two deliveries each - and compare it to how many cogs actually delivered last shift; if the room is short, take a lane, and if the room is over-covered, go eat, because unclaimed food rots in ten seconds. State plainly in `say` whether the room is short or covered and by how much. Ignore glitter and quartz entirely; they are inert and they exist to waste your hands.",
+      "USE_BEDROCK": "true"
+    },
+    "player": "ply_bac48eb1-662e-44f8-973d-f3e016dccf5d"
+  },
+  {
+    "name": "chemistry-courier",
+    "run": "/bin/chemistry-player",
+    "env": {
+      "PLAYER_SCRIPTED": "courier"
+    }
+  },
+  {
+    "name": "chemistry-freeloader",
+    "run": "/bin/chemistry-player",
+    "env": {
+      "PLAYER_SCRIPTED": "freeloader"
+    }
+  }
+]

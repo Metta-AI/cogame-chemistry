@@ -1,0 +1,15 @@
+version     = "0.1.0"
+author      = "Metta-AI"
+description = "MP Chemistry: eight cogs holding three autocatalytic food cycles fed while the room fills with shiny useless molecules."
+license     = "MIT"
+
+srcDir = "src"
+
+requires "nim >= 2.2.4"
+requires "bitworld >= 0.1.0"
+requires "pixie"
+requires "mummy >= 0.4.7"
+requires "curly >= 1.1.1"
+requires "whisky >= 0.1.3"
+requires "supersnappy >= 2.1.3"
+requires "flatty >= 0.3.4"

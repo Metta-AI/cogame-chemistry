@@ -1,0 +1,8 @@
+services:
+  chemistry:
+    image: coworld-chemistry:latest
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile
+      network: host

@@ -1,0 +1,15 @@
+{
+  "cycles": 3,
+  "shifts": 12,
+  "ticksPerShift": 60,
+  "distractorPeriod": 2,
+  "distractorGroundCap": 24,
+  "tokens": [
+    "0xBADA55_0", "0xBADA55_1", "0xBADA55_2", "0xBADA55_3",
+    "0xBADA55_4", "0xBADA55_5", "0xBADA55_6", "0xBADA55_7"
+  ],
+  "players": [
+    {"name": "Argon"}, {"name": "Borax"}, {"name": "Cinder"}, {"name": "Dram"},
+    {"name": "Ember"}, {"name": "Flint"}, {"name": "Gilt"}, {"name": "Hob"}
+  ]
+}

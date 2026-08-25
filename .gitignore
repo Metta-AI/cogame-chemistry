@@ -1,0 +1,10 @@
+nim.cfg
+nimcache/
+replay-viewer/dist/
+dist/
+scratch/
+scripts/art/cut/
+__pycache__/
+*.pyc
+*.log
+.DS_Store

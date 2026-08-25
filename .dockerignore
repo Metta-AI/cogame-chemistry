@@ -1,0 +1,7 @@
+.git
+.github
+scratch
+replay-viewer/dist
+dist
+nimcache
+*.log

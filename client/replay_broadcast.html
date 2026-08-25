@@ -1961,6 +1961,24 @@ body[data-embed] #board { top: 0; height: 100%; }
 .feed-row .badge.auto { background: rgba(242, 232, 216, 0.18); }
 .feed-row .said { color: rgba(242, 232, 216, 0.6); font-style: italic; }
 
+/* `notes` is recorded so an LLM seat's reasoning is auditable, and it is
+   drawn ONLY here: the `order` row expands to a wrapped second line under the
+   headline `say`. The line is bounded by the feed's own reserved width and
+   wraps rather than ellipsizing -- a remark that does not fit gets more
+   lines, never a cut. Dropped where the feed has no room for it (360px). */
+.feed-row.chem-order { flex-wrap: wrap; max-width: calc(228 * var(--u)); }
+.feed-row .notes {
+  flex: 1 1 100%;
+  margin-top: calc(2 * var(--u));
+  font-family: var(--finefont);
+  font-size: calc(7 * var(--u));
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: rgba(242, 232, 216, 0.42);
+}
+
 /* Scrubber beats: labelled, clickable buttons, one per kind the game emits.
    CSS for EVERY kind: shift, cold, restart, famine, gameover. */
 .beat-marker.chem {
@@ -2008,8 +2026,10 @@ body[data-embed] #board { top: 0; height: 100%; }
 @media (max-width: 640px) {
   #roster .chip .pol { display: none; }
   #shame .row:nth-child(n+5) { display: none; }
+  .feed-row .notes { display: none; }
 }
 #stage.tiny #roster .chip .pol { display: none; }
+#stage.tiny .feed-row .notes { display: none; }
 </style>
 <script>
 (function () {
@@ -2260,7 +2280,10 @@ body[data-embed] #board { top: 0; height: 100%; }
           '<span class="who">' + C.esc(job) + '</span>' +
           (e.say ? '<span class="said">"' + C.esc(e.say) + '"</span>' : '') +
           (e.source === 'fallback' || e.source === 'scripted'
-            ? '<span class="badge auto">auto</span>' : ''));
+            ? '<span class="badge auto">auto</span>' : '') +
+          // The expanded row: the seat's private notes, drawn nowhere else.
+          (e.notes ? '<span class="notes">' + C.esc(e.notes) + '</span>' : ''),
+          'chem-order');
         break;
       case 'misdrop':
         feedRow('<span class="who">' + C.esc(aliasOf(s, e.seat)) + '</span>' +

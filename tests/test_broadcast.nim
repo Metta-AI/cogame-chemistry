@@ -222,6 +222,17 @@ suite "the broadcast page":
       check (".beat-marker." & kind & " {") in page
     check ".beat-marker.chem {" in page
 
+  test "notes are drawn in the feed's expanded order row, and only there":
+    ## Design: `notes` is recorded and "drawn only in the feed's expanded
+    ## row"; `say` is the headline.
+    let gameBlock = page[split .. ^1].stripJsComments()
+    check "e.notes ? '<span class=\"notes\">'" in gameBlock
+    check "'chem-order'" in gameBlock
+    check ".feed-row .notes {" in page
+    ## Wrapped, never ellipsized: a remark that does not fit gets more lines.
+    check "white-space: normal;" in page
+    check "text-overflow: ellipsis" notin page[split .. ^1]
+
   test "?spoilers=0 holds the game block's beats back until the playhead":
     ## The markers are the game block's own buttons, so they are not in
     ## chrome_common's `markerEls` and its gate cannot see them: the block

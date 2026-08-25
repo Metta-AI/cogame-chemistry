@@ -84,6 +84,10 @@ proc chromeInputLocked(gs: GameState, events: JsonNode): ChromeInput =
   result.transportEnabled = false
   result.events = events
   result.beats = gs.sim.beatsJson()
+  ## The cycle-charge strip reads `lead`; a live spectator gets the same
+  ## whole-timeline shape the replay bundle ships, as far as the room has
+  ## played.
+  result.lead = chargeLeadSeries(gs.config, gs.sim.chargeSeries)
   var tracker = initBroadcastTracker(gs.sim.reactors.len)
   tracker.rebuild(gs.config, gs.sim.events.eventsJson(), gs.sim.tick)
   result.tracker = tracker

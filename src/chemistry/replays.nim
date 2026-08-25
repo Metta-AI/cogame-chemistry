@@ -234,25 +234,27 @@ proc eventsBetween*(player: ReplayPlayer, fromTick, toTick: int): JsonNode =
     if tick > fromTick and tick <= toTick:
       result.add event
 
-proc leadSeries*(player: ReplayPlayer): JsonNode =
+proc chargeLeadSeries*(config: GameConfig, series: seq[seq[int]]): JsonNode =
   ## `state.lead` in exactly the shape `client/chrome_common.js`'s
   ## `ingestLeadSeries` expects: {teams: [name...], pts: [[tick, a, b, c]...]}
-  ## -- so the cycle-charge strip needs no change to that file.
+  ## -- so the cycle-charge strip needs no change to that file. One point per
+  ## shift boundary plus the endpoints: the whole-timeline shape, without
+  ## shipping 720 rows of chrome on the first frame.
   var teams = newJArray()
-  for reactor in player.data.config.reactorsPresent():
+  for reactor in config.reactorsPresent():
     teams.add(%($reactor))
   var pts = newJArray()
-  ## One point per shift boundary plus the endpoints: the whole-timeline
-  ## shape, without shipping 720 rows of chrome on the first frame.
-  let step = max(1, player.data.config.ticksPerShift div 2)
-  for index, row in player.data.series:
-    if index == 0 or index == player.data.series.high or
-        row[0] mod step == 0:
+  let step = max(1, config.ticksPerShift)
+  for index, row in series:
+    if index == 0 or index == series.high or row[0] mod step == 0:
       var point = newJArray()
       for value in row:
         point.add(%value)
       pts.add point
   %*{"teams": teams, "pts": pts}
+
+proc leadSeries*(player: ReplayPlayer): JsonNode =
+  chargeLeadSeries(player.data.config, player.data.series)
 
 proc resultsSummary*(player: ReplayPlayer): string =
   let results = player.data.results

@@ -222,6 +222,16 @@ suite "the broadcast page":
       check (".beat-marker." & kind & " {") in page
     check ".beat-marker.chem {" in page
 
+  test "?spoilers=0 holds the game block's beats back until the playhead":
+    ## The markers are the game block's own buttons, so they are not in
+    ## chrome_common's `markerEls` and its gate cannot see them: the block
+    ## runs the same rule itself, off the chrome's own spoiler flag.
+    let gameBlock = page[split .. ^1].stripJsComments()
+    check "getSpoilers" in page[0 ..< split]
+    check "C.getSpoilers" in gameBlock
+    check "el.__tick > s.t" in gameBlock
+    check "applyChemBeatSpoilers(s)" in gameBlock
+
   test ".plate-name takes the slack and labels hide under 640px":
     check ".plate-name, .plate .team-name { flex: 1 1 auto; min-width: 3.2em; }" in page
     check "@media (max-width: 640px) {" in page

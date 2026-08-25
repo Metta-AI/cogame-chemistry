@@ -1805,6 +1805,7 @@ body[data-embed] #board { top: 0; height: 100%; }
     teamName: teamName, setName: setName,
     pushFeed: pushFeed, banner: banner, beatPulse: beatPulse,
     setVerdict: setVerdict,
+    getSpoilers: getSpoilers,
     seek: function (tick) { send('s:' + tick); },
     register: function (hooks) {
       Object.keys(hooks).forEach(function (name) {
@@ -2173,6 +2174,7 @@ body[data-embed] #board { top: 0; height: 100%; }
   // NOT `markBeat`: that name belongs to the chrome alias block and a
   // function declaration here would hoist over it (tandem, 2026-08-23).
   var beatsPlaced = false;
+  var chemBeatEls = [];
   var BEAT_LABEL = {
     shift: function (b) { return 'SHIFT ' + (b.n || ''); },
     cold: function (b) { return String(b.rx || '').toUpperCase() + ' COLD'; },
@@ -2180,8 +2182,26 @@ body[data-embed] #board { top: 0; height: 100%; }
     famine: function () { return 'FAMINE'; },
     gameover: function () { return 'FINAL'; }
   };
+  // The chrome's own spoiler gate walks the markers `renderBeatMarkers`
+  // placed; these buttons are the game block's, so the block runs the same
+  // rule over them every frame: with ?spoilers=0 a beat stays hidden until
+  // the playhead reaches its tick.
+  function applyChemBeatSpoilers(s) {
+    var show = C.getSpoilers ? C.getSpoilers() : true;
+    for (var i = 0; i < chemBeatEls.length; i++) {
+      var el = chemBeatEls[i];
+      var hide = !show && el.__tick > s.t;
+      if (el.__hidden !== hide) {
+        el.__hidden = hide;
+        el.style.display = hide ? 'none' : '';
+      }
+    }
+  }
   function buildChemBeats(s) {
-    if (beatsPlaced || !s.beats || !s.beats.length) return;
+    if (beatsPlaced || !s.beats || !s.beats.length) {
+      if (beatsPlaced) applyChemBeatSpoilers(s);
+      return;
+    }
     beatsPlaced = true;
     var scrub = $('scrub');
     var start = Math.max(0, s.st || 0);
@@ -2203,8 +2223,11 @@ body[data-embed] #board { top: 0; height: 100%; }
         event.stopPropagation();
         C.seek(beat.t);
       });
+      el.__tick = beat.t;
+      chemBeatEls.push(el);
       scrub.appendChild(el);
     });
+    applyChemBeatSpoilers(s);
   }
 
   // ---- feed ----------------------------------------------------------------

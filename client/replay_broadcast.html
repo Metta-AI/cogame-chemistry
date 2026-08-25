@@ -2138,7 +2138,10 @@ body[data-embed] #board { top: 0; height: 100%; }
           (MOLECULE_TINT[p.carry] || '#f2e8d8') + '"></span>' : '') +
         '<span class="alias">' + C.esc(String(p.name).toUpperCase()) +
         '</span>' +
-        '<span class="pol">' + C.esc(p.pol || '') + '</span>' +
+        // The POLICY name, and only here. A local self-play episode seats the
+        // aliases as their own policy names; showing both would just stutter.
+        (p.pol && p.pol !== p.name
+          ? '<span class="pol">' + C.esc(p.pol) + '</span>' : '') +
         '<span class="num">' + (p.ate || 0) + '</span></span>';
     });
     if (rosterEl._html !== html) {

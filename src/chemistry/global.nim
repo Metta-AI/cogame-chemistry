@@ -77,10 +77,20 @@ proc boardRenderScaleFor*(mapWidth, mapHeight: int): int =
   1
 
 proc gameDir(): string =
-  let appDir = getAppDir()
-  for candidate in [appDir, appDir / "..", ".", "/"]:
+  ## Where `data/` lives. The working directory comes FIRST and
+  ## `getAppDir()` is never called under emscripten: `getAppFilename` has no
+  ## implementation there and dies with a range defect long before any
+  ## fallback runs, which is exactly how the first wasm bundle failed at
+  ## "render first frame". Under emscripten the preload mounts the tree at
+  ## /data with the process CWD at /, so "." and "/" both resolve it.
+  for candidate in [".", "/"]:
     if dirExists(candidate / "data"):
       return candidate
+  when not defined(emscripten):
+    let appDir = getAppDir()
+    for candidate in [appDir, appDir / ".."]:
+      if dirExists(candidate / "data"):
+        return candidate
   "."
 
 proc dataPath(name: string): string = gameDir() / "data" / name

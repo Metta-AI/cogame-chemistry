@@ -65,6 +65,18 @@ suite "the reply schema":
     check order.hasReactor
     check order.reactor == rxBeryl
 
+  test "a reactor absent from this variant is CLAMPED on forage too":
+    ## The design's `reactor` row scopes the clamp to the field, not to the
+    ## job: naming an absent vat on `forage` is recorded as clamped as well.
+    var two = freshSim(2, 0)
+    two.reactors[1].charge = 0
+    let order = two.parseDecision(parseJson(
+      """{"job":"forage","reactor":"cobalt"}"""))
+    check order.job == jobForage
+    check order.clamped
+    check order.hasReactor
+    check order.reactor == rxBeryl
+
   test "a feedstock the named reactor does not take is ACCEPTED as written":
     ## The misdrop is the graph test and must stay expressible.
     let order = sim.parseDecision(parseJson(

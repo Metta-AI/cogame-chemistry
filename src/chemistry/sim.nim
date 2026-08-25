@@ -385,13 +385,25 @@ proc runShift*(sim: var Sim) =
 # Orders
 # --------------------------------------------------------------------------
 
+proc lowestChargeReactor(sim: Sim): ReactorName =
+  ## The clamp target the design names for a reactor absent in this variant:
+  ## the present reactor with the lowest charge.
+  var best = 0
+  var bestCharge = high(int)
+  for index in 0 ..< sim.reactors.len:
+    if sim.reactors[index].charge < bestCharge:
+      bestCharge = sim.reactors[index].charge
+      best = index
+  sim.reactors[best].name
+
 proc normalizeOrder*(sim: Sim, order: Order):
     tuple[ok: bool, order: Order, error: string] =
   ## Validates one standing order against THIS variant and clamps the one
-  ## thing the design says is clampable (an absent reactor). Everything else
-  ## is an invalid reply -- including a species whose vent is absent here.
-  ## A feedstock the named reactor does not take is ACCEPTED as written: the
-  ## misdrop is the graph test and must stay expressible.
+  ## thing the design says is clampable (an absent reactor, on `supply` and on
+  ## `forage` alike). Everything else is an invalid reply -- including a
+  ## species whose vent is absent here. A feedstock the named reactor does not
+  ## take is ACCEPTED as written: the misdrop is the graph test and must stay
+  ## expressible.
   var normalized = order
   normalized.clamped = false
   case order.job
@@ -401,7 +413,11 @@ proc normalizeOrder*(sim: Sim, order: Order):
   of jobForage:
     normalized.hasMolecule = false
     if order.hasReactor and not sim.config.hasReactor(order.reactor):
-      normalized.hasReactor = false
+      ## Clamped, not silently dropped: the seat named a vat, and the `order`
+      ## event has to say the room moved it.
+      normalized.reactor = sim.lowestChargeReactor()
+      normalized.hasReactor = true
+      normalized.clamped = true
   of jobSupply, jobHoard:
     if not order.hasMolecule:
       return (false, normalized, "job " & $order.job & " needs a molecule")
@@ -413,13 +429,7 @@ proc normalizeOrder*(sim: Sim, order: Order):
         return (false, normalized, "job supply needs a reactor")
       if not sim.config.hasReactor(order.reactor):
         ## Clamped to the present reactor with the lowest charge.
-        var best = 0
-        var bestCharge = high(int)
-        for index in 0 ..< sim.reactors.len:
-          if sim.reactors[index].charge < bestCharge:
-            bestCharge = sim.reactors[index].charge
-            best = index
-        normalized.reactor = sim.reactors[best].name
+        normalized.reactor = sim.lowestChargeReactor()
         normalized.hasReactor = true
         normalized.clamped = true
     else:

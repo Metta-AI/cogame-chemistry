@@ -122,6 +122,26 @@ suite "reactions":
     ## Ticks 1, 7 and 13 react at reactionCooldown = 6.
     check sim.reactors[0].reactions == 3
 
+  test "STARVING covers an empty stock as well as a stalled cycle":
+    var sim = idleSim()
+    ## charge >= 1, both stocks full, a reaction this tick -> RUNNING.
+    sim.reactors[0].charge = 3
+    sim.reactors[0].stock = [2, 2]
+    sim.stepTick()
+    check sim.reactorStatus(0) == rsRunning
+    ## charge >= 1 and a stock at 0 is STARVING even though the reaction was
+    ## ten ticks ago (design: "charge >= 1 but a stock is 0 or no reaction for
+    ## 48 ticks").
+    sim.reactors[0].stock[1] = 0
+    for tick in 1 .. 10:
+      sim.stepTick()
+    check sim.reactors[0].ticksSinceReaction <= 48
+    check sim.reactorStatus(0) == rsStarving
+    ## charge 0 still reads COLD whatever the stocks are.
+    sim.reactors[0].charge = 0
+    sim.reactors[0].stock = [5, 5]
+    check sim.reactorStatus(0) == rsCold
+
 suite "decay and rot":
   test "charge decays on tick mod chargeDecayPeriod and emits cold at the 0 crossing":
     var sim = idleSim()

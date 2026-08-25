@@ -120,9 +120,15 @@ proc foodCells*(sim: Sim): seq[Cell] =
         result.add Cell(x: x, y: y)
 
 proc reactorStatus*(sim: Sim, index: int): ReactorStatus =
+  ## COLD at charge 0; STARVING at charge >= 1 when a stock is empty OR no
+  ## reaction has fired for 48 ticks; RUNNING otherwise. An empty stock is a
+  ## starving cycle even when the last reaction was recent -- that is the
+  ## signal a supplier needs while there is still charge left to save.
   let reactor = sim.reactors[index]
   if reactor.charge <= 0:
     return rsCold
+  if reactor.stock[0] <= 0 or reactor.stock[1] <= 0:
+    return rsStarving
   if reactor.ticksSinceReaction <= 48:
     return rsRunning
   rsStarving

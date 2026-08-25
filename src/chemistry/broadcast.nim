@@ -114,8 +114,11 @@ proc rebuild*(
         event{"y"}.getInt(-1) == SeatHomes[seat].y:
       tracker.hoard[seat].inc
 
-proc statusWord*(charge, ticksSinceReaction: int): string =
+proc statusWord*(charge, ticksSinceReaction, stockA, stockB: int): string =
+  ## The viewer's copy of `reactorStatus`: STARVING covers an empty stock as
+  ## well as a stalled cycle, so the scorebug word and the observation agree.
   if charge <= 0: "COLD"
+  elif stockA <= 0 or stockB <= 0: "STARVING"
   elif ticksSinceReaction <= 48: "RUNNING"
   else: "STARVING"
 
@@ -151,7 +154,7 @@ proc buildStateJson*(input: ChromeInput): string =
       "policies": policies,
       "charge": charge,
       "chargeMax": input.config.chargeMax,
-      "status": statusWord(charge, since),
+      "status": statusWord(charge, since, stockA, stockB),
       "stock": [stockA, stockB],
       "feed": [$ReactorFeed[name][0], $ReactorFeed[name][1]],
       "cold": input.config.coldStartCost,

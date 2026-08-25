@@ -260,9 +260,12 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
       let orders = client.decideAll(simCopy, prompts, scripted)
 
       withLock stateLock:
+        ## The `order` events fire from applyOrder, BEFORE the shift's first
+        ## tick, so the broadcast window has to open before them or the live
+        ## feed never shows a standing order at all.
+        let before = state.sim.events.len
         for slot in 0 ..< Seats:
           state.sim.applyOrder(slot, orders[slot])
-        let before = state.sim.events.len
         state.sim.runShift()
         var events = newJArray()
         for index in before ..< state.sim.events.len:

@@ -177,6 +177,27 @@ suite "the viewer plays the recorded frames without re-simulating":
       inc frames
     check chromeFrames == 60
 
+  test "every recorded event lands in some frame's event window":
+    ## The feed is driven by `eventsBetween(previousFrameTick, thisFrameTick)`.
+    ## The eight shift-1 `order` rows are stamped at tick 0, so the load
+    ## packet's window opens at `startTick - 1` -- exactly what
+    ## `replay-viewer/chemistry_replay.nim` passes. Nothing recorded may fall
+    ## outside the union of the windows.
+    var player = initReplayPlayer(data)
+    var delivered = 0
+    var previous = player.startTick() - 1
+    for index in 0 .. data.frames.high:
+      let tick = data.frames[index].tick
+      delivered += player.eventsBetween(previous, tick).len
+      previous = tick
+    check delivered == data.events.len
+    var shiftOneOrders = 0
+    for event in player.eventsBetween(player.startTick() - 1,
+        player.startTick()):
+      if event{"k"}.getStr() == "order":
+        inc shiftOneOrders
+    check shiftOneOrders == Seats
+
   test "a seek is an array index, and the transport commands land":
     var player = initReplayPlayer(data)
     player.applyCommand(' ')

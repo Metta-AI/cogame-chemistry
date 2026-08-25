@@ -97,7 +97,12 @@ proc chemistryLoadReplay(data: ptr uint8, length: cint): cint
     runtimeLoaded = true
     frameStage = "advance replay (" & $replayData.frames.len & " frames)"
     stampStage("render first frame")
-    renderCurrent(newJArray(), true)
+    ## The eight shift-1 `order` rows are stamped at tick 0 -- the orders are
+    ## installed before the first tick runs -- so the load packet's event
+    ## window opens BEFORE the first frame. Without this the feed never shows
+    ## shift 1's standing orders.
+    renderCurrent(
+      player.eventsBetween(player.startTick() - 1, player.currentTick()), true)
     leadSent = true
     return 1
   except Exception as error:

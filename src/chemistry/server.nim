@@ -54,7 +54,6 @@ var
   stateLock: Lock
   state: GameState
   gameServer: Server
-  shuttingDown: bool
 
 initLock(stateLock)
 
@@ -176,7 +175,6 @@ proc finishEpisode(runtimeConfig: RuntimeConfig) =
   ## before exiting; the runner waits on process exit anyway.
   echo "chemistry: artifacts written; serving for ", grace,
     "s of shutdown grace"
-  shuttingDown = true
   sleep(grace * 1000)
   echo "chemistry: episode complete, shutting down"
   quit(0)

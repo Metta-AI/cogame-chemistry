@@ -270,11 +270,7 @@ proc stepRot(sim: var Sim) =
 # --------------------------------------------------------------------------
 
 proc stepRecord(sim: var Sim) =
-  sim.frames.add sim.buildFrame()
-  var row = @[sim.tick]
-  for reactor in sim.reactors:
-    row.add reactor.charge
-  sim.chargeSeries.add row
+  sim.recordFrame()
 
 # --------------------------------------------------------------------------
 # End conditions

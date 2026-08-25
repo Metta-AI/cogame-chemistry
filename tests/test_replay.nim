@@ -56,12 +56,16 @@ suite "replay: end to end and strictly UTF-8":
     check node{"config"}{"rows"}.getInt() == RoomRows
     check node{"results"}.kind == JObject
 
-  test "frames and the charge series cover every tick played":
+  test "frames and the charge series cover the opening state and every tick played":
     let node = parseJson(raw)
-    check node{"frames"}.len == sim.tick
-    check node{"series"}{"charge"}.len == sim.tick
-    for frame in node{"frames"}:
-      check frame{"t"}.getInt() >= 1
+    ## One frame for the opening state (tick 0) plus one per tick played.
+    check node{"frames"}.len == sim.tick + 1
+    check node{"series"}{"charge"}.len == sim.tick + 1
+    check node{"frames"}[0]{"t"}.getInt() == 0
+    check node{"series"}{"charge"}[0][0].getInt() == 0
+    check node{"frames"}[node{"frames"}.len - 1]{"t"}.getInt() == sim.tick
+    for index, frame in node{"frames"}.getElems():
+      check frame{"t"}.getInt() == index
       check frame{"t"}.getInt() <= sim.tick
 
   test "every event tick is inside the played range and the vocabulary is complete":
@@ -120,7 +124,7 @@ suite "replay: end to end and strictly UTF-8":
 
   test "the replay round-trips through the viewer's parser":
     let data = parseReplayBytes(raw)
-    check data.frames.len == sim.tick
+    check data.frames.len == sim.tick + 1
     check data.config.shifts == sim.config.shifts
     var player = initReplayPlayer(data)
     check player.maxTick() == sim.tick

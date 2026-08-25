@@ -200,6 +200,18 @@ proc mixHash(value: var uint64, item: int) =
   value = value xor uint64(item and 0xFFFFFFFF)
   value = value * 0x100000001B3'u64
 
+proc recordFrame*(sim: var Sim) =
+  ## Appends this tick's state frame and its charge-series row. Called once on
+  ## the opening state and then by step 9 of every tick, so `frames[0].t == 0`
+  ## carries the room before anybody moved and `series.charge[0]` is the
+  ## opening charge row -- the shape the design's replay example shows
+  ## (`"frames":[{"t":0,...}`, `"charge":[[0,3,3,3],[1,3,3,3],...]`).
+  sim.frames.add sim.buildFrame()
+  var row = @[sim.tick]
+  for reactor in sim.reactors:
+    row.add reactor.charge
+  sim.chargeSeries.add row
+
 proc gameHash*(sim: Sim): string =
   ## FNV-1a over the recorded state. Two runs of one seed and one order
   ## script must agree here after every tick -- `tests/test_sim.nim` asserts
@@ -273,3 +285,6 @@ proc initSim*(config: GameConfig): Sim =
       result.policyNames.add name.name
   while result.policyNames.len < Seats:
     result.policyNames.add SeatAliases[result.policyNames.len]
+  ## The opening state is frame 0: playback starts on the room as it stood
+  ## before the first tick, and the charge series has a row for tick 0.
+  result.recordFrame()

@@ -324,8 +324,11 @@ suite "determinism":
     let b = scripted(4242)
     check a.tick == 720
     check a.gameHash() == b.gameHash()
-    check a.frames.len == 720
-    check a.chargeSeries.len == 720
+    ## 720 played ticks plus the opening frame at tick 0.
+    check a.frames.len == 721
+    check a.chargeSeries.len == 721
+    check a.frames[0].tick == 0
+    check a.chargeSeries[0][0] == 0
 
   test "a fresh server reproduces the same hash":
     ## `initSim` is the only entry into a game, so a "fresh server" is a fresh

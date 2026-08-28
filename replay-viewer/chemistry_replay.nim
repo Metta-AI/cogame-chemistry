@@ -50,7 +50,7 @@ proc buildChrome(events: JsonNode, sendLead: bool): string =
     skipLulls: player.skipLulls,
     fastForwarding: false,
     transportEnabled: true,
-    speed: player.replaySpeed(),
+    speed: player.replayDisplaySpeed(),
     events: events,
     holdSeconds: player.endHoldSecondsLeft()
   )

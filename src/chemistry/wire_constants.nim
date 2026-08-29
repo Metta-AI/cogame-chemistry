@@ -9,9 +9,9 @@
 ## `tools/gen_wire_constants.nim` emits it for the static wasm bundle.
 ##
 ## **The global keeps its name**: `client/chrome_common.js` reads
-## `window.CTF_WIRE` at its line 72 and that file ships BYTE-FOR-BYTE, so
-## renaming the global would force a byte change in a file that must not
-## change.
+## `window.CTF_WIRE` at its line 72 and that file ships byte-pinned (coworld-
+## ctf's bytes plus only the fleet-wide 0.5x transport patch), so renaming
+## the global would force a further byte change in a pinned file.
 
 import std/strutils
 import sim_types
@@ -24,7 +24,9 @@ proc jsIntArray(values: openArray[int]): string =
   result.add "]"
 
 const WireConstantsJs* =
-  "window.CTF_WIRE={speeds:" & jsIntArray(PlaybackSpeeds) &
+  # 0.5 is the replay-only half speed (ReplayHalfSpeedIndex, command '5');
+  # it rides ahead of the engine's integer PlaybackSpeeds.
+  "window.CTF_WIRE={speeds:[0.5," & jsIntArray(PlaybackSpeeds)[1..^1] &
   ",fps:" & $TargetFps &
   ",chromeSpriteId:" & $BroadcastChromeSpriteId &
   "};"

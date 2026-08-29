@@ -11,6 +11,10 @@ import sim_types, sim_config, sim_state, events, sim
 
 const ReplayProtocol* = "chemistry.replay.v1"
 
+const ReplayHalfSpeedIndex* = -1
+  ## speedIndex sentinel for 1/2x playback: one recorded frame every other
+  ## presentation frame. Replay-only -- replaySpeed() clamps it back to 1x.
+
 type
   ReplayData* = object
     protocol*: string
@@ -35,6 +39,11 @@ type
     index*: int
     playing*: bool
     speedIndex*: int
+      ## Index into PlaybackSpeeds, or ReplayHalfSpeedIndex (-1) for the
+      ## replay-only 1/2x speed (one frame every other presentation frame).
+    halfPhase*: bool
+      ## Frame parity while at 1/2x speed: the index advances only on the
+      ## odd presentation frames, toggled once per advance().
     looping*: bool
     skipLulls*: bool
     endHoldFrames*: int
@@ -150,7 +159,14 @@ proc currentTick*(player: ReplayPlayer): int =
   player.data.frames[player.index].tick
 
 proc replaySpeed*(player: ReplayPlayer): int =
+  ## The integer frames-per-presentation-frame step (1 while at 1/2x -- the
+  ## fractional pace lives in advance()'s halfPhase parity).
   PlaybackSpeeds[max(0, min(PlaybackSpeeds.high, player.speedIndex))]
+
+proc replayDisplaySpeed*(player: ReplayPlayer): float =
+  ## The speed the chrome shows: 0.5 at half speed, else the integer speed.
+  if player.speedIndex == ReplayHalfSpeedIndex: 0.5
+  else: float(player.replaySpeed())
 
 proc seekTick*(player: var ReplayPlayer, tick: int) =
   var index = 0
@@ -163,9 +179,12 @@ proc seekTick*(player: var ReplayPlayer, tick: int) =
   player.endHoldFrames = 0
 
 proc applySpeedCommand(speedIndex: var int, command: char) =
+  ## '5' selects the 1/2x replay speed (ReplayHalfSpeedIndex); '-' floors
+  ## there.
   case command
   of '+', '=': speedIndex = min(PlaybackSpeeds.high, speedIndex + 1)
-  of '-', '_': speedIndex = max(0, speedIndex - 1)
+  of '-', '_': speedIndex = max(ReplayHalfSpeedIndex, speedIndex - 1)
+  of '5': speedIndex = ReplayHalfSpeedIndex
   of '1': speedIndex = 0
   of '2': speedIndex = 1
   of '3': speedIndex = 2
@@ -179,7 +198,7 @@ proc applyCommand*(player: var ReplayPlayer, command: char) =
   of ' ': player.playing = not player.playing
   of 'p': player.playing = true
   of 'P': player.playing = false
-  of '+', '=', '-', '_', '1', '2', '3', '4', '8', '6':
+  of '+', '=', '-', '_', '1', '2', '3', '4', '5', '8', '6':
     applySpeedCommand(player.speedIndex, command)
   of ',', '<':
     player.playing = false
@@ -205,6 +224,7 @@ const EndHoldFrames* = TargetFps * 4
 proc advance*(player: var ReplayPlayer): tuple[fromTick, toTick: int] =
   ## Advances one presentation frame. Returns the (exclusive, inclusive) tick
   ## span crossed, which is the window the chrome frame's `events` covers.
+  player.halfPhase = not player.halfPhase
   let before = player.currentTick()
   if not player.playing:
     return (before, before)
@@ -217,8 +237,14 @@ proc advance*(player: var ReplayPlayer): tuple[fromTick, toTick: int] =
       player.index = 0
       return (player.currentTick() - 1, player.currentTick())
     return (before, before)
-  player.index = min(player.data.frames.high,
-    player.index + player.replaySpeed())
+  ## At 1/2x a frame is spent only every other presentation frame (halfPhase
+  ## parity); every other speed steps its integer frame count.
+  let step =
+    if player.speedIndex == ReplayHalfSpeedIndex:
+      (if player.halfPhase: 1 else: 0)
+    else:
+      player.replaySpeed()
+  player.index = min(player.data.frames.high, player.index + step)
   (before, player.currentTick())
 
 proc endHoldSecondsLeft*(player: ReplayPlayer): int =

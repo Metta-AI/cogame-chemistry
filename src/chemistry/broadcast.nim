@@ -41,7 +41,7 @@ type
     skipLulls*: bool
     fastForwarding*: bool
     transportEnabled*: bool
-    speed*: int
+    speed*: float
     events*: JsonNode
     beats*: JsonNode
     lead*: JsonNode

@@ -80,7 +80,7 @@ proc chromeFor(sim: Sim, tick: int, phase: string): JsonNode =
     playing: true,
     looping: true,
     transportEnabled: true,
-    speed: 1,
+    speed: 1.0,
     events: sim.events.eventsJson(),
     beats: sim.beatsJson(),
     results: sim.resultsJson())
@@ -310,15 +310,16 @@ suite "the broadcast page":
       check name notin aliases
 
 suite "viewer provenance":
-  test "chrome_common.js is coworld-ctf's file, byte for byte":
-    ## The design note pins this: nothing in it is edited, which is why the
-    ## wire-constants global keeps the name `window.CTF_WIRE` and why the
-    ## cycle plates ride the starter's own teams / roster machinery. The
-    ## Digest of `Metta-AI/coworld-ctf@bfd5e9c client/chrome_common.js`
-    ## (sha256 7ace7287e0d19bf0fddb2362c55e4d76dfb44adcd4fbc8d1743b0557ced72f7c).
+  test "chrome_common.js is coworld-ctf's file plus the transport patch":
+    ## The design note pins this: coworld-ctf's bytes plus ONLY the
+    ## fleet-wide replay transport patch (the 0.5x speed chip in the SPEEDS
+    ## fallback and the speed->command map). The wire-constants global keeps
+    ## the name `window.CTF_WIRE` and the cycle plates ride the starter's own
+    ## teams / roster machinery; nothing else in the file is edited or
+    ## reformatted.
     let bytes = readFile(RepoRoot / "client" / "chrome_common.js")
     check $secureHash(bytes) ==
-      "D970EBE4EFF1B0154BA604B4E9ADF62D601CB3EB"
+      "1DFF4EF4241115084BB5A063AD95C5E159B904A8"
     check "window.CTF_WIRE" in bytes
 
   test "all four viewer files came from coworld-ctf and were renamed together":

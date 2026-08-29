@@ -166,7 +166,7 @@ suite "the viewer plays the recorded frames without re-simulating":
         frame: data.frames[player.index], tick: player.currentTick(),
         maxTick: player.maxTick(), startTick: player.startTick(),
         shift: player.currentTick() div data.config.ticksPerShift,
-        phase: "playing", playing: true, transportEnabled: true, speed: 1,
+        phase: "playing", playing: true, transportEnabled: true, speed: 1.0,
         events: player.eventsBetween(span.fromTick, span.toTick))
       tracker.rebuild(data.config, data.events, input.tick)
       input.tracker = tracker
@@ -210,3 +210,27 @@ suite "the viewer plays the recorded frames without re-simulating":
     check player.replaySpeed() == 8
     player.seekTick(300)
     check player.currentTick() == 300
+
+  test "1/2x is a replay-only crawl: one frame every other advance":
+    ## The fleet-wide 1/2x replay speed: command '5' selects
+    ## ReplayHalfSpeedIndex, the chrome shows 0.5, and advance() spends one
+    ## frame every OTHER presentation frame (halfPhase parity).
+    var player = initReplayPlayer(data)
+    player.applyCommand('5')
+    check player.speedIndex == ReplayHalfSpeedIndex
+    check player.replayDisplaySpeed() == 0.5
+    check player.replaySpeed() == 1
+    let start = player.index
+    discard player.advance()
+    discard player.advance()
+    check player.index == start + 1
+    discard player.advance()
+    discard player.advance()
+    check player.index == start + 2
+    player.applyCommand('+')
+    check player.speedIndex == 0
+    check player.replayDisplaySpeed() == 1.0
+    player.applyCommand('-')
+    check player.speedIndex == ReplayHalfSpeedIndex
+    player.applyCommand('-')
+    check player.speedIndex == ReplayHalfSpeedIndex

@@ -35,3 +35,24 @@ Qwen2.5-0.5B-Instruct tokenizer (maximum: 1,971 tokens). One CPU optimizer step
 per dataset with a local tiny model verifies the Metta post-training path.
 These examples distill the scripted teacher; they do not establish stronger
 league play.
+
+# Numeric reinforcement learning
+
+Compile the persistent bridge and pass its manifest and variant to Metta's
+`recipes.external.coworld.train` (native PufferLib) or
+`recipes.external.coworld_metta_rl.train` (Metta RL):
+
+```sh
+nim c -d:release --path:src -o:/tmp/chemistry-train-bridge tools/train_bridge.nim
+python tools/test_train_bridge.py /tmp/chemistry-train-bridge
+```
+
+All four certified variants expose 216 numeric observation values and 25
+fixed order slots. The catalog includes idle, forage, hoard, and supply
+orders; absent species and reactors are masked. Numeric observations contain
+the acting seat's position, public reactor and cog state, visible loose
+molecules and food, and four resolved shifts of history. The semantic view
+comes from the hosted player's observation. Both views remain frozen while
+the eight seats decide simultaneously. The `courier` policy supplies opponents
+and teacher labels. Complete games return native food-eaten scores. Hosted
+prompts remain available to Metta post-training.

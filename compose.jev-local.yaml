@@ -1,0 +1,7 @@
+services:
+  chemistry:
+    image: chemistry-jev-25001:local
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile

@@ -2,6 +2,8 @@ nim.cfg
 nimcache/
 replay-viewer/dist/
 dist/
+dist-jev/
+/tmp/
 scratch/
 scripts/art/cut/
 __pycache__/

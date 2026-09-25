@@ -162,6 +162,22 @@ proc orderJson(order: Order, withSource: bool): JsonNode =
   if withSource:
     result["source"] = %($order.source)
 
+proc legalOrders*(sim: Sim): JsonNode =
+  ## Exact standing orders available to any external policy in this variant.
+  result = newJArray()
+  result.add(%*{"id": "idle", "job": "idle"})
+  result.add(%*{"id": "forage", "job": "forage"})
+  for reactor in sim.reactors:
+    result.add(%*{"id": "forage:" & $reactor.name,
+      "job": "forage", "reactor": $reactor.name})
+  for species in sim.config.speciesPresent():
+    result.add(%*{"id": "hoard:" & $species,
+      "job": "hoard", "molecule": $species})
+    for reactor in sim.reactors:
+      result.add(%*{"id": "supply:" & $species & ":" & $reactor.name,
+        "job": "supply", "molecule": $species,
+        "reactor": $reactor.name})
+
 proc observationJson*(sim: Sim, slot: int): JsonNode =
   ## The `state` frame each seat gets at every shift boundary. Everything in
   ## here is visible to that seat; NOTHING else is -- in particular no policy
@@ -235,7 +251,7 @@ proc observationJson*(sim: Sim, slot: int): JsonNode =
       inert.add(%($species))
   %*{
     "type": "state",
-    "protocol": "chemistry.player.v1",
+    "protocol": "chemistry.player.v2",
     "slot": slot,
     "name": cog.alias,
     "shift": sim.shift + 1,
@@ -260,6 +276,7 @@ proc observationJson*(sim: Sim, slot: int): JsonNode =
     "cogs": cogs,
     "history": history,
     "notes": cog.notes,
+    "legalOrders": sim.legalOrders(),
     "rules": {
       "reactions": rules,
       "autocatalysis": "every reaction adds 1 charge (max " &

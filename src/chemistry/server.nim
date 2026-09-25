@@ -12,9 +12,9 @@
 ##   WS  /player?slot=N&token=T      the seat socket; a bad token is REFUSED
 ##   WS  /global                     live spectator: sprite protocol + chrome
 ##
-## `chemistry.player.v1` frames, JSON text:
-##   game -> player: welcome, state (every shift boundary), final
-##   player -> game: {"type":"prompt","prompt":"...","scripted":"courier"}
+## `chemistry.player.v2` frames, JSON text:
+##   game -> player: welcome, state, observation (external seats), final
+##   player -> game: prompt, register external, action with decision id/order id
 
 import
   std/[json, locks, os, sets, strutils, tables, times, unicode],
@@ -43,6 +43,12 @@ type
     sim: Sim
     prompts: seq[string]
     scripted: seq[ScriptKind]
+    external: seq[bool]
+    registered: seq[bool]
+    decisionId: int
+    pending: seq[bool]
+    accepted: seq[bool]
+    actions: seq[Order]
     playerSockets: Table[int, WebSocket]
     socketSlots: Table[WebSocket, int]
     globalSockets: HashSet[WebSocket]
@@ -197,7 +203,9 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
     while epochTime() < connectDeadline:
       var connected = 0
       withLock stateLock:
-        connected = state.playerSockets.len
+        for slot in 0 ..< config.numAgents:
+          if state.playerSockets.hasKey(slot) and state.registered[slot]:
+            inc connected
       if connected >= config.numAgents:
         break
       sleep(200)
@@ -258,10 +266,50 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
         echo "chemistry: shift ", state.sim.shift + 1, " of ", config.shifts,
           " at ", (epochTime() - gameStart).int, "s"
 
-      ## The slow part (one parallel batch of eight) runs OUTSIDE the lock on
-      ## a snapshot; only this thread mutates the sim, so it cannot go stale.
+      ## Send every external seat the same simultaneous shift snapshot before
+      ## waiting for any reply. The game still owns observation and legality.
+      var clientScripted = newSeq[ScriptKind](Seats)
+      for slot in 0 ..< Seats:
+        clientScripted[slot] = scripted[slot]
+      withLock stateLock:
+        inc state.decisionId
+        for slot in 0 ..< Seats:
+          if state.external[slot]:
+            clientScripted[slot] = skCourier
+            state.pending[slot] = true
+            state.accepted[slot] = false
+            if state.playerSockets.hasKey(slot):
+              state.playerSockets[slot].send($ %*{
+                "type": "observation", "id": state.decisionId,
+                "observation": simCopy.observationJson(slot)
+              })
+          elif not state.registered[slot]:
+            clientScripted[slot] = skCourier
+
+      ## Prompt seats remain one parallel model batch; external seats keep a
+      ## courier order until their own legal reply arrives.
       let batchStart = epochTime()
-      let orders = client.decideAll(simCopy, prompts, scripted)
+      var orders = client.decideAll(simCopy, prompts, clientScripted)
+      let deadline = epochTime() + config.llmTimeoutSeconds.float
+      while epochTime() < deadline:
+        var waiting = false
+        withLock stateLock:
+          for slot in 0 ..< Seats:
+            if state.pending[slot] and not state.accepted[slot] and
+                state.playerSockets.hasKey(slot):
+              waiting = true
+        if not waiting:
+          break
+        sleep(20)
+
+      withLock stateLock:
+        for slot in 0 ..< Seats:
+          if state.pending[slot]:
+            if state.accepted[slot]:
+              orders[slot] = state.actions[slot]
+            else:
+              orders[slot].source = osFallback
+          state.pending[slot] = false
 
       withLock stateLock:
         ## The `order` events fire from applyOrder, BEFORE the shift's first
@@ -349,7 +397,7 @@ proc playerUpgradeHandler(request: Request) {.gcsafe.} =
         state.playerSockets.len, "/", state.config.numAgents, ")"
     websocket.send($ %*{
       "type": "welcome",
-      "protocol": "chemistry.player.v1",
+      "protocol": "chemistry.player.v2",
       "slot": slot,
       "name": alias,
       "shifts": shifts,
@@ -408,9 +456,32 @@ proc websocketHandler(
           withLock stateLock:
             state.prompts[slot] = prompt
             state.scripted[slot] = scripted
+            state.external[slot] = false
+            state.registered[slot] = true
           echo "chemistry: slot ", slot, " delivered a prompt (", prompt.len,
             " chars", (if scripted != skNone: ", scripted " & $scripted
                        else: ""), ")"
+        elif payload{"type"}.getStr() == "register" and
+            payload["control"].getStr() == "external":
+          withLock stateLock:
+            state.external[slot] = true
+            state.registered[slot] = true
+          echo "chemistry: slot ", slot, " registered external control"
+        elif payload{"type"}.getStr() == "action":
+          let id = payload["id"].getInt()
+          let orderId = payload["orderId"].getStr()
+          withLock stateLock:
+            if state.external[slot] and state.pending[slot] and
+                state.decisionId == id and not state.accepted[slot]:
+              for option in state.sim.legalOrders():
+                if option["id"].getStr() == orderId:
+                  var reply = parseJson($option)
+                  reply["say"] = %payload{"say"}.getStr()
+                  reply["notes"] = %payload{"notes"}.getStr()
+                  state.actions[slot] = state.sim.parseDecision(reply)
+                  state.actions[slot].source = osExternal
+                  state.accepted[slot] = true
+                  break
         else:
           echo "chemistry: ignoring player frame of type ",
             payload{"type"}.getStr()
@@ -448,6 +519,11 @@ proc runGameServer*(config: GameConfig, runtimeConfig: RuntimeConfig) =
   state.sim = initSim(config)
   state.prompts = newSeq[string](Seats)
   state.scripted = newSeq[ScriptKind](Seats)
+  state.external = newSeq[bool](Seats)
+  state.registered = newSeq[bool](Seats)
+  state.pending = newSeq[bool](Seats)
+  state.accepted = newSeq[bool](Seats)
+  state.actions = newSeq[Order](Seats)
   let router = buildRouter()
   gameServer = newServer(router, websocketHandler)
   createThread(gameThread, runGame, runtimeConfig)

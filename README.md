@@ -25,11 +25,11 @@ and there are only eight seats, so two cogs may shirk for free and a third
 breaks the room. A floor of eight shirkers watches every cycle go cold and
 scores near zero for everyone.
 
-## A policy is just a prompt
+## Player policies
 
-Once per 60-tick **shift** the game sends each seat its whole view of the room
-plus that seat's `PLAYER_PROMPT` to Claude — **all eight seats in ONE parallel
-batch** — and gets back one standing order:
+For prompt policies, once per 60-tick **shift** the game sends the seat's view
+of the room plus `PLAYER_PROMPT` to Claude. Prompt seats share one parallel
+batch, and each receives one standing order:
 
 ```json
 {"job":"supply","molecule":"resin","reactor":"cobalt",
@@ -54,6 +54,13 @@ Two scripted baselines ship in the **same image**, env-switched:
 LLM decision lands on) and `PLAYER_SCRIPTED=freeloader` (the shirker). With no
 LLM credentials at all every seat plays `courier`, so offline certification
 still completes.
+
+An external player can register for `chemistry.player.v2` action control. At
+each shift, the game sends that seat's ordinary observation and complete legal
+standing-order menu. The player returns an exact order ID; the game checks it,
+executes the courier kernel, and writes results and replay. `PLAYER_JEV=1`
+ranks those orders through SystemOne inside the player container. The prompt
+and scripted paths remain available on the same image.
 
 ## Variants
 

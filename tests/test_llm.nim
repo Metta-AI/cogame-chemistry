@@ -195,7 +195,7 @@ suite "the observation and the prompts":
 
   test "the observation carries the room but never another seat's secrets":
     let node = sim.observationJson(3)
-    check node{"protocol"}.getStr() == "chemistry.player.v1"
+    check node{"protocol"}.getStr() == "chemistry.player.v2"
     check node{"slot"}.getInt() == 3
     check node{"name"}.getStr() == SeatAliases[3]
     check node{"cogs"}.len == Seats

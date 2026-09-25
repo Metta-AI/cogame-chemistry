@@ -89,6 +89,7 @@ type
     osRetry = "retry"
     osFallback = "fallback"
     osScripted = "scripted"
+    osExternal = "external"
 
   Action* = enum
     acWait = "wait"

@@ -1,8 +1,7 @@
-## Chemistry prompt, scripted, or external Jev player.
+## Chemistry prompt or scripted player.
 ##
 ## Forked from `cogame-bullwhip/src/bullwhip_player.nim`. Prompt and scripted
-## policies register once; PLAYER_JEV=1 receives the ordinary seat observation
-## and ranks exact legal standing orders in this player process. Prompt seats
+## policies register once. Prompt seats
 ## still share the game's parallel model batch.
 ##
 ## PLAYER_SCRIPTED=courier registers the seat as the built-in working baseline
@@ -15,8 +14,7 @@
 
 import
   std/[json, options, os, strutils],
-  whisky,
-  chemistry/jev_policy
+  whisky
 
 const DefaultPrompt = """
 Keep all three vats running. Each shift, read the three charges first: a vat at
@@ -35,7 +33,6 @@ when isMainModule:
   let url = getEnv("COWORLD_PLAYER_WS_URL")
   if url.len == 0:
     quit("COWORLD_PLAYER_WS_URL is not set", 1)
-  let jev = getEnv("PLAYER_JEV") == "1"
   var prompt = getEnv("PLAYER_PROMPT")
   if prompt.len == 0:
     prompt = DefaultPrompt
@@ -46,13 +43,9 @@ when isMainModule:
 
   echo "chemistry player: connecting to game"
   let socket = newWebSocket(url)
-  if jev:
-    socket.send($ %*{"type": "register", "control": "external"})
-    echo "chemistry player: external Jev control registered"
-  else:
-    socket.send(promptFrame())
-    echo "chemistry player: prompt delivered (", prompt.len, " chars",
-      (if scripted.len > 0: ", scripted " & scripted else: ""), ")"
+  socket.send(promptFrame())
+  echo "chemistry player: prompt delivered (", prompt.len, " chars",
+    (if scripted.len > 0: ", scripted " & scripted else: ""), ")"
 
   var running = true
   while running:
@@ -83,16 +76,7 @@ when isMainModule:
           payload{"variant"}.getStr(), ")"
         ## Re-deliver the prompt after the welcome, in case the first send
         ## raced the server's slot registration.
-        if jev:
-          socket.send($ %*{"type": "register", "control": "external"})
-        else:
-          socket.send(promptFrame())
-      of "observation":
-        if jev:
-          var action = chooseAction(payload["observation"],
-            getEnv("PLAYER_PROMPT"))
-          action["id"] = payload["id"]
-          socket.send($action)
+        socket.send(promptFrame())
       of "final":
         echo "chemistry player: final scores ", payload{"scores"},
           " reason ", payload{"reason"}.getStr()

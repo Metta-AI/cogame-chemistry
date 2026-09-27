@@ -58,9 +58,8 @@ still completes.
 An external player can register for `chemistry.player.v2` action control. At
 each shift, the game sends that seat's ordinary observation and complete legal
 standing-order menu. The player returns an exact order ID; the game checks it,
-executes the courier kernel, and writes results and replay. `PLAYER_JEV=1`
-ranks those orders through SystemOne inside the player container. The prompt
-and scripted paths remain available on the same image.
+executes the courier kernel, and writes results and replay. The prompt and
+scripted paths remain available on the same image.
 
 ## Variants
 

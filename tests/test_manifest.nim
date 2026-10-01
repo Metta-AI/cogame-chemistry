@@ -45,11 +45,9 @@ suite "manifest":
   test "the replay viewer is the STATIC bundle, never a pod":
     check game{"replay_viewer"}{"bundle"}.getStr() == "static-replay-viewer"
 
-  test "the game runnable carries the coworld secret URI":
-    ## Without it the hosted game container never sees the secret and every
-    ## league episode silently plays scripted (hive, 2026-08-23).
-    check game{"runnable"}{"env"}{"ANTHROPIC_API_KEY_URI"}.getStr() ==
-      "secret://coworld/chemistry/anthropic_api_key"
+  test "hosted inference needs no provider secret":
+    doAssert game{"runnable"}{"env"}{"ANTHROPIC_API_KEY_URI"}.isNil,
+      "hosted LLM uses the platform sidecar without provider secrets"
 
   test "docs are TEXT and carry pages":
     check game{"docs"}{"readme"}{"type"}.getStr() == "text"

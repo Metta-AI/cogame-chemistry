@@ -11,7 +11,8 @@
 ## still failing falls back to the `courier` order.
 ##
 ## Credentials, in order of preference:
-##   Bedrock sidecar / bearer token   - hosted pods
+##   COWORLD_LLM_ENDPOINT            - hosted sidecar
+##   Bedrock bearer token            - local play
 ##   ANTHROPIC_API_KEY                - the key itself
 ##   ANTHROPIC_API_KEY_URI            - a URI holding the key
 ## With none the client disables itself immediately and every seat plays
@@ -31,12 +32,13 @@ const
 
 type
   LlmTransport = enum
-    ltNone, ltBedrock, ltAnthropic
+    ltNone, ltSidecar, ltBedrock, ltAnthropic
 
   LlmClient* = ref object
     curl: Curly
     transport: LlmTransport
     apiKey: string
+    sidecarEndpoint: string
     bedrockEndpoint: string
     bedrockModels: seq[string]
     bedrockModel: int
@@ -90,6 +92,13 @@ proc newLlmClient*(config: GameConfig): LlmClient =
     maxOutputTokens: config.maxOutputTokens,
     timeoutSeconds: config.llmTimeoutSeconds
   )
+  let sidecarEndpoint = getEnv("COWORLD_LLM_ENDPOINT").strip()
+  if sidecarEndpoint.len > 0:
+    result.transport = ltSidecar
+    result.sidecarEndpoint = sidecarEndpoint.strip(chars = {'/'}, leading = false)
+    result.model = getEnv("COWORLD_LLM_MODEL", "anthropic/claude-haiku-4.5")
+    result.curl = newCurly()
+    return
   let bedrockEndpoint = getEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME").strip()
   let bedrockToken = getEnv("AWS_BEARER_TOKEN_BEDROCK").strip()
   if bedrockEndpoint.len > 0 or bedrockToken.len > 0:
@@ -523,7 +532,7 @@ proc parseDecision*(sim: Sim, payload: JsonNode): Order =
     raise newException(ChemistryError, normalized.error)
   result = normalized.order
 
-proc requestFor(client: LlmClient, system, user: string):
+proc requestFor(client: LlmClient, system, user: string, slot: int):
     tuple[url: string, headers: HttpHeaders, body: string] =
   var body = %*{
     "max_tokens": client.maxOutputTokens,
@@ -532,11 +541,17 @@ proc requestFor(client: LlmClient, system, user: string):
   }
   var headers: HttpHeaders
   headers["content-type"] = "application/json"
+  if client.transport == ltSidecar and slot >= 0:
+    headers["X-Coworld-Player-Slot"] = $slot
   if client.transport == ltBedrock:
     body["anthropic_version"] = %BedrockAnthropicVersion
     if client.bedrockToken.len > 0:
       headers["authorization"] = "Bearer " & client.bedrockToken
     result.url = client.bedrockUrl()
+  elif client.transport == ltSidecar:
+    body["model"] = %client.model
+    headers["anthropic-version"] = AnthropicVersion
+    result.url = client.sidecarEndpoint & "/v1/messages"
   else:
     body["model"] = %client.model
     ## No `output_config.effort`: Haiku 4.5 rejects the whole request with a
@@ -613,7 +628,7 @@ proc decideAll*(
       var user = sim.userPrompt(slot, prompts[slot])
       if attempt > 0:
         user.add(RetryHint)
-      let request = client.requestFor(sim.systemPrompt(slot), user)
+      let request = client.requestFor(sim.systemPrompt(slot), user, slot)
       batch.post(request.url, request.headers, request.body, $slot)
     if attempt == 0:
       client.lastBatchSize = batch.len

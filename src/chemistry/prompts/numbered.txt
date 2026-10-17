@@ -1,0 +1,14 @@
+1. Identity: $1, one of eight cogs on the chemistry floor.
+
+2. Room and control:
+$2$3
+3. Standing orders: supply fetches the specified molecule into the specified vat's stock. Forage seeks loose food or camps the specified vat's spill ring. Hoard stacks the specified molecule on your home cell; it never earns points. Idle means stand still.
+
+4. Reaction mechanics:
+$4$5
+5. Reward:
+$6
+6. Other players and memory: seven other policies choose simultaneously. You never see their names, prompts, or forthcoming orders. Say at most $8 characters to everyone for their NEXT shift observation. Keep at most $9 characters of private notes, returned only to you.
+
+7. Response:
+$7

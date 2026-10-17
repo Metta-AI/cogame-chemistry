@@ -117,3 +117,74 @@ fixture, and the static replay bundle **executed** in headless chromium against
 that episode's replay.
 
 Design note: [`docs/plans/2026-08-25-chemistry-design.md`](docs/plans/2026-08-25-chemistry-design.md).
+
+## Episode prompt diversity
+
+`promptVariant` selects a fixed wording for the whole episode. Training choices
+are `canonical`, `plain`, `numbered`, `questions`, and `reordered`. `mixed` selects
+`promptSeed mod 5` in that order and requires an explicit nonnegative integer
+`promptSeed`. This seed never consumes simulation randomness. Defaults remain
+canonical. Reserve `heldout-briefing` and `heldout-reference` for hosted evaluation;
+the training bridge and exporter reject them.
+
+Bank `chemistry-rules-v1` varies role, job, and communication explanations and
+section order. Numerical mechanics, scoring, room/control details, reaction graphs,
+and legal response values come verbatim from the canonical renderer. Change the
+bank version whenever wording changes. Operator guidance stays separate.
+
+External `chemistry.player.v2` observation frames include the exact system/user
+`messages` and seat-local `observation.prompt_template`. Metadata contains `bank`,
+resolved `variant`, requested `selection`, `seed`, and exact UTF-8 message hashes
+`system_sha256` and `user_sha256`. Public state frames, results, and replays do not
+include this metadata or the new private records.
+
+The hosted game writes `chemistry.prompt-provenance.v1` JSONL to
+`COGAME_SAVE_TRAJECTORY_URI` when configured. A `kind: prompt` record carries seat,
+zero-based shift, attempt, exact messages, and prompt metadata. `scope:
+configured_prompt` records intended context, including scripted/external seats;
+`scope: request` records a native request including retry instructions. Neither
+proves model generation or constitutes a native training trajectory. The final
+`kind: episode` record reports reason, scores, game seed, bank, selected wording,
+prompt seed, record count, and `COWORLD_SOURCE_REVISION`. Empty revisions are
+unqualified evidence. Store these records privately.
+
+Compile `tools/train_bridge.nim` with `nim c --path:src`. Use
+`tools/train_bridge coworld_manifest_template.json two-cycles --language` for text
+policies; teacher replies include the full standing order, speech, and notes.
+Without `--language`, the numeric policy interface keeps its existing action set.
+Reset accepts the two prompt-selection fields. Both interfaces attach private
+prompt metadata to each decision.
+
+Compile `tools/export_posttrain.nim`, then run from a clean committed checkout:
+
+```bash
+tools/export_posttrain OUTPUT 10 1 two-cycles 0
+```
+
+The final argument selects mixed export: five consecutive prompt seeds per game
+seed, starting at that value. Omit it for canonical export. All wordings and game
+variants share the family `chemistry-<seed>`; seeds divisible by five enter
+validation and the others enter training. Preserve that split when combining
+corpora. `prompt-provenance.jsonl` joins the unchanged training examples by
+`(episode_id, decision_id)`. The manifest records source, teacher, bank, wordings,
+and complete-game outcomes.
+
+Complete-flow checks use the real game and bridge:
+
+```bash
+python tools/test_prompt_variants.py /absolute/path/to/bridge
+python tools/test_prompt_socket_games.py /absolute/path/to/game /new/private/output SOURCE_REVISION
+python tools/test_prompt_export.py /absolute/path/to/export /new/private/output
+```
+
+Supply the original bridge as a second argument to the variant check for canonical
+byte parity. Socket checks disable providers, connect eight external players, run
+ordinary full-length games, and validate received messages against private records.
+They stop their own server after final frames and artifacts, during its unchanged
+shutdown grace; Docker CI separately covers natural exit.
+
+For a model study, freeze source, model, operator strategy, variants, game seeds,
+seat/opponent assignments, and budgets. Compare canonical-trained and mixed-trained
+policies on identical held-out games. Report scores, invalid actions, retries,
+fallbacks, and completion rates separately. Scripted invariance checks cannot
+establish improved learning or reduced model collapse.

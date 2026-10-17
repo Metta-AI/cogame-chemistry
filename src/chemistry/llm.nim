@@ -23,7 +23,10 @@ import
   std/[json, os, strutils, times],
   bitworld/runtime,
   curly,
-  sim
+  sim,
+  prompts
+
+export prompts
 
 const
   AnthropicUrl = "https://api.anthropic.com/v1/messages"
@@ -31,6 +34,10 @@ const
   BedrockAnthropicVersion = "bedrock-2023-05-31"
 
 type
+  DecisionBatch* = object
+    orders*: seq[Order]
+    promptEvidence*: seq[JsonNode] ## Prompt intent only, not proof of model generation.
+
   LlmTransport = enum
     ltNone, ltSidecar, ltBedrock, ltAnthropic
 
@@ -333,7 +340,7 @@ proc graphTable(sim: Sim): string =
       $reactor.feed[1] & " | glitter, quartz")
   lines.join("\n")
 
-proc systemPrompt*(sim: Sim, slot: int): string =
+proc canonicalPrompt(sim: Sim, slot: int): string =
   let cog = sim.cogs[slot]
   result.add("You are " & cog.alias.toUpperAscii() &
     ", one of eight cogs working a chemistry floor.\n")
@@ -396,6 +403,26 @@ and reaches them in NEXT shift's observation. Your `notes` (max """ &
   result.add("`molecule` is required for supply and hoard; `reactor` is " &
     "required for supply.\n\n")
   result.add("""OUTPUT FORMAT: reply with ONLY one JSON object, nothing else - no analysis, no explanation, no markdown fences, no text before or after the object. Your reply must begin with the character { and end with }.""")
+
+proc systemPrompt*(sim: Sim, slot: int): string =
+  let canonical = canonicalPrompt(sim, slot)
+  if sim.config.selectedPromptVariant == pvCanonical:
+    return canonical
+  # These game-owned section boundaries keep numerical rules and legal values
+  # verbatim while the templates own explanatory wording and section order.
+  let markers = ["THE ROOM:", "WHAT YOU CONTROL:", "THE JOBS:",
+    "THE REACTION GRAPH:", "- A vat reacts", "SCORING:",
+    "THE OTHER SEVEN COGS", "Reply with one JSON object:"]
+  var offsets: array[8, int]
+  for index, marker in markers:
+    offsets[index] = canonical.find(marker)
+    doAssert offsets[index] >= 0
+    if index > 0: doAssert offsets[index] > offsets[index - 1]
+  renderVariantPrompt(sim.config, [sim.cogs[slot].alias.toUpperAscii(),
+    canonical[offsets[0] ..< offsets[1]], canonical[offsets[1] ..< offsets[2]],
+    canonical[offsets[3] ..< offsets[4]], canonical[offsets[4] ..< offsets[5]],
+    canonical[offsets[5] ..< offsets[6]], canonical[offsets[7] .. ^1],
+    $MaxSayLen, $MaxNotesLen])
 
 proc operatorBlock(prompt: string): string =
   if prompt.len == 0:
@@ -596,24 +623,32 @@ const RetryHint = "\nYour previous reply was invalid. Respond with ONLY " &
   "the requested JSON object, using one of the listed job, molecule and " &
   "reactor values."
 
+proc promptRecord(sim: Sim, slot, attempt: int, scope, system, user: string): JsonNode =
+  %*{"schema": "chemistry.prompt-provenance.v1", "kind": "prompt", "scope": scope,
+    "seat": slot, "shift": sim.shift, "attempt": attempt,
+    "prompt_template": promptMetadata(sim.config, system, user),
+    "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+
 proc decideAll*(
   client: LlmClient,
   sim: Sim,
   prompts: seq[string],
   scripted: seq[ScriptKind]
-): seq[Order] =
-  ## One standing order per seat, in slot order. Never raises: any failure
-  ## falls back to the `courier` order so the episode always advances.
-  result = newSeq[Order](Seats)
+): DecisionBatch =
+  ## One standing order per seat, with private prompt intent. Provider failures
+  ## fall back to courier; game-owned prompt rendering errors propagate.
+  result.orders = newSeq[Order](Seats)
   var open: seq[int]
   for slot in 0 ..< Seats:
+    result.promptEvidence.add(promptRecord(sim, slot, 0, "configured_prompt",
+      systemPrompt(sim, slot), userPrompt(sim, slot, prompts[slot])))
     let kind = scripted[slot]
     ## A seat that never connected, or whose socket died mid-episode, plays
     ## `courier` for every remaining shift: there is no operator behind it to
     ## prompt, so an LLM call would spend the budget on an empty guidance
     ## block. The server owns `connected`.
     if kind != skNone or client.disabled or not sim.cogs[slot].connected:
-      result[slot] = sim.scriptedOrder(slot,
+      result.orders[slot] = sim.scriptedOrder(slot,
         (if kind == skNone: skCourier else: kind))
     else:
       open.add slot
@@ -628,7 +663,9 @@ proc decideAll*(
       var user = sim.userPrompt(slot, prompts[slot])
       if attempt > 0:
         user.add(RetryHint)
-      let request = client.requestFor(sim.systemPrompt(slot), user, slot)
+      let system = sim.systemPrompt(slot)
+      result.promptEvidence.add(promptRecord(sim, slot, attempt, "request", system, user))
+      let request = client.requestFor(system, user, slot)
       batch.post(request.url, request.headers, request.body, $slot)
     if attempt == 0:
       client.lastBatchSize = batch.len
@@ -643,7 +680,7 @@ proc decideAll*(
         var order = sim.parseDecision(extractJsonObject(text))
         order.source = (if attempt == 0: osLlm else: osRetry)
         order.latencyMs = latencyMs
-        result[slot] = order
+        result.orders[slot] = order
       except CatchableError as error:
         echo "chemistry llm: seat ", slot, " attempt ", attempt, " failed: ",
           errorText(error.msg)
@@ -651,5 +688,5 @@ proc decideAll*(
     open = stillOpen
   for slot in open:
     echo "chemistry llm: seat ", slot, " falling back to scripted order"
-    result[slot] = sim.courierOrder(slot)
-    result[slot].source = osFallback
+    result.orders[slot] = sim.courierOrder(slot)
+    result.orders[slot].source = osFallback

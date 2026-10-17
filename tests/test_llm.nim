@@ -110,7 +110,7 @@ suite "degrade, never hang":
     check client.disabled
     var prompts = newSeq[string](Seats)
     var scripted = newSeq[ScriptKind](Seats)
-    let orders = client.decideAll(sim, prompts, scripted)
+    let orders = client.decideAll(sim, prompts, scripted).orders
     check orders.len == Seats
     for slot in 0 ..< Seats:
       check orders[slot].source == osScripted
@@ -131,7 +131,7 @@ suite "degrade, never hang":
     for slot in 0 ..< Seats:
       prompts[slot] = "hold your lane"
     var scripted = newSeq[ScriptKind](Seats)
-    let orders = client.decideAll(sim, prompts, scripted)
+    let orders = client.decideAll(sim, prompts, scripted).orders
     ## ONE batch carries every open seat -- eight on shift 1.
     check client.lastBatchSize == Seats
     for slot in 0 ..< Seats:
@@ -154,7 +154,7 @@ suite "degrade, never hang":
     var scripted = newSeq[ScriptKind](Seats)
     for slot in 0 ..< Seats:
       scripted[slot] = (if slot mod 2 == 0: skCourier else: skFreeloader)
-    let orders = client.decideAll(sim, prompts, scripted)
+    let orders = client.decideAll(sim, prompts, scripted).orders
     check client.lastBatchSize == 0
     for slot in 0 ..< Seats:
       check orders[slot].source == osScripted
@@ -178,7 +178,7 @@ suite "degrade, never hang":
     check not client.disabled
     var prompts = newSeq[string](Seats)
     var scripted = newSeq[ScriptKind](Seats)
-    let orders = client.decideAll(sim, prompts, scripted)
+    let orders = client.decideAll(sim, prompts, scripted).orders
     check client.lastBatchSize == Seats - 2
     for slot in [2, 5]:
       let courier = sim.courierOrder(slot)

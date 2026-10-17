@@ -1,0 +1,14 @@
+Floor briefing for $1: you are one of eight cogs, each with its own policy.
+
+Environment briefing:
+$2$3
+Job briefing: supply fetches a specified molecule and drops it into the specified vat's stock. Forage looks for loose food or camps a specified vat's spill ring. Hoard gathers a specified molecule onto your own home cell, earning nothing. Idle stands still.
+
+Chemistry briefing:
+$4$5
+Score briefing:
+$6
+Communication briefing: all seven other policies choose simultaneously. Their names, prompts, and upcoming orders are hidden. Say at most $8 characters to everyone; delivery is in NEXT shift's observation. Notes of at most $9 characters come back privately to you alone.
+
+Response briefing:
+$7

@@ -13,11 +13,23 @@ type
   PlayerConfig* = object
     name*: string
 
+  PromptVariant* = enum
+    pvCanonical = "canonical"
+    pvPlain = "plain"
+    pvNumbered = "numbered"
+    pvQuestions = "questions"
+    pvReordered = "reordered"
+    pvHeldoutBriefing = "heldout-briefing"
+    pvHeldoutReference = "heldout-reference"
+    pvMixed = "mixed"
+
   GameConfig* = object
     tokens*: seq[string]
     players*: seq[PlayerConfig]
     numAgents*: int
     seed*: int
+    promptVariant*: PromptVariant
+    promptSeed*: int
     cycles*: int
     shifts*: int
     ticksPerShift*: int
@@ -102,6 +114,10 @@ proc hasSpecies*(config: GameConfig, species: Species): bool =
 proc clampInt(value, lo, hi: int): int =
   max(lo, min(hi, value))
 
+proc selectedPromptVariant*(config: GameConfig): PromptVariant =
+  if config.promptVariant == pvMixed: PromptVariant(config.promptSeed mod 5)
+  else: config.promptVariant
+
 proc update*(config: var GameConfig, configJson: string) =
   ## Applies a runtime JSON config on top of the defaults.
   if configJson.strip().len == 0:
@@ -121,6 +137,16 @@ proc update*(config: var GameConfig, configJson: string) =
     config.numAgents = node["num_agents"].getInt(Seats)
   if node.hasKey("seed"):
     config.seed = node["seed"].getInt()
+  if node.hasKey("promptVariant"):
+    config.promptVariant = parseEnum[PromptVariant](node["promptVariant"].getStr())
+  if node.hasKey("promptSeed"):
+    if node["promptSeed"].kind != JInt:
+      raise newException(ChemistryError, "promptSeed must be an integer")
+    config.promptSeed = node["promptSeed"].getInt()
+  if config.promptSeed < 0:
+    raise newException(ChemistryError, "promptSeed must be nonnegative")
+  if config.promptVariant == pvMixed and not node.hasKey("promptSeed"):
+    raise newException(ChemistryError, "mixed wording requires an explicit promptSeed")
   if node.hasKey("cycles"):
     config.cycles = clampInt(node["cycles"].getInt(DefaultCycles), 2, 3)
   if node.hasKey("shifts"):

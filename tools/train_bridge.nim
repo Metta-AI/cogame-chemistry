@@ -20,19 +20,26 @@ proc actionOf(order: Order): JsonNode =
   if order.hasReactor:
     result["reactor"] = %($order.reactor)
 
+var languageMode = false
+
 proc decision(view: Sim, id, seat: int): JsonNode =
+  let system = systemPrompt(view, seat)
+  let user = userPrompt(view, seat, OperatorPrompt)
+  let observation = observationJson(view, seat)
+  observation["prompt_template"] = promptMetadata(view.config, system, user)
   %*{
     "kind": "decision", "game": "chemistry", "decision_id": id,
     "seat": seat, "engine_seat": seat, "turn": view.shift,
-    "semantic_view": observationJson(view, seat),
+    "semantic_view": observation,
     "inbox": [],
     "messages": [
-      {"role": "system", "content": systemPrompt(view, seat)},
-      {"role": "user", "content": userPrompt(view, seat, OperatorPrompt)}
+      {"role": "system", "content": system},
+      {"role": "user", "content": user}
     ],
     "speech_messages": [],
     "action_schema": {"type": "object", "required": ["job"]},
-    "typed_question": newJNull()
+    "typed_question": newJNull(),
+    "inference_mode": (if languageMode: %"text_action" else: newJNull())
   }
 
 proc encoding(view: Sim, id, seat: int): JsonNode =
@@ -137,9 +144,12 @@ proc encoding(view: Sim, id, seat: int): JsonNode =
 
 when isMainModule:
   let args = commandLineParams()
-  if args.len notin 1 .. 2:
-    quit("usage: chemistry-train-bridge MANIFEST [VARIANT]", 1)
-  let variant = if args.len == 2: args[1] else: "two-cycles"
+  if args.len notin 1 .. 3:
+    quit("usage: chemistry-train-bridge MANIFEST [VARIANT [--language]]", 1)
+  let variant = if args.len >= 2: args[1] else: "two-cycles"
+  if args.len == 3:
+    doAssert args[2] == "--language"
+    languageMode = true
   let manifest = parseFile(args[0])
   var variantConfig: JsonNode
   for entry in manifest["variants"]:
@@ -159,7 +169,11 @@ when isMainModule:
       var config = defaultGameConfig()
       let runtimeConfig = copy(variantConfig)
       runtimeConfig["tokens"] = %*["t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7"]
+      for key in ["promptVariant", "promptSeed"]:
+        if request.hasKey(key): runtimeConfig[key] = request[key]
       config.update($runtimeConfig)
+      if config.selectedPromptVariant in {pvHeldoutBriefing, pvHeldoutReference}:
+        raise newException(ChemistryError, "held-out wording cannot enter training")
       config.seed = seedOf(request["seed"].getStr())
       game = initSim(config)
       game.logEnabled = false
@@ -173,7 +187,11 @@ when isMainModule:
     of "teacher":
       doAssert not game.done
       let teacher = view.scriptedOrder(seat, skCourier)
-      response = %*{"response": $actionOf(teacher)}
+      let action = actionOf(teacher)
+      if languageMode:
+        action["say"] = %teacher.say
+        action["notes"] = %teacher.notes
+      response = %*{"response": $action}
     of "step":
       doAssert not game.done and request["decision_id"].getInt() == id
       let action = parseJson(request["response"].getStr())

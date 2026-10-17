@@ -49,6 +49,7 @@ type
     pending: seq[bool]
     accepted: seq[bool]
     actions: seq[Order]
+    promptEvidence: seq[string]
     playerSockets: Table[int, WebSocket]
     socketSlots: Table[WebSocket, int]
     globalSockets: HashSet[WebSocket]
@@ -175,6 +176,14 @@ proc finishEpisode(runtimeConfig: RuntimeConfig) =
 
   sleep(500)
   echo "chemistry: writing results and replay"
+  let provenance = state.promptEvidence & @[$(%*{
+    "schema": "chemistry.prompt-provenance.v1", "kind": "episode", "reason": results["reason"],
+    "game_seed": state.config.seed, "prompt_bank": PromptBankVersion,
+    "prompt_variant": $state.config.selectedPromptVariant, "prompt_seed": state.config.promptSeed,
+    "source_revision": getEnv("COWORLD_SOURCE_REVISION"),
+    "records": state.promptEvidence.len, "scores": results["scores"]})]
+  writeArtifact(getEnv("COGAME_SAVE_TRAJECTORY_URI"), provenance.join("\n") & "\n",
+    "application/x-ndjson", "COGAME_SAVE_TRAJECTORY_METHOD")
   writeArtifact(runtimeConfig.resultsUri, $results, "application/json",
     "COGAME_RESULTS_METHOD")
   writeArtifact(runtimeConfig.replayUri, replayData, "application/json",
@@ -279,9 +288,13 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
             state.pending[slot] = true
             state.accepted[slot] = false
             if state.playerSockets.hasKey(slot):
+              let system = systemPrompt(simCopy, slot)
+              let user = userPrompt(simCopy, slot, prompts[slot])
+              let observation = simCopy.observationJson(slot)
+              observation["prompt_template"] = promptMetadata(simCopy.config, system, user)
               state.playerSockets[slot].send($ %*{
-                "type": "observation", "id": state.decisionId,
-                "observation": simCopy.observationJson(slot)
+                "type": "observation", "id": state.decisionId, "observation": observation,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]
               })
           elif not state.registered[slot]:
             clientScripted[slot] = skCourier
@@ -289,7 +302,10 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
       ## Prompt seats remain one parallel model batch; external seats keep a
       ## courier order until their own legal reply arrives.
       let batchStart = epochTime()
-      var orders = client.decideAll(simCopy, prompts, clientScripted)
+      let batch = client.decideAll(simCopy, prompts, clientScripted)
+      var orders = batch.orders
+      withLock stateLock:
+        for record in batch.promptEvidence: state.promptEvidence.add($record)
       let deadline = epochTime() + config.llmTimeoutSeconds.float
       while epochTime() < deadline:
         var waiting = false

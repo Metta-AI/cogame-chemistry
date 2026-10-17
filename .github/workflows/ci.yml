@@ -158,6 +158,7 @@ jobs:
           nim c -d:release --parallelBuild:1 --path:src -o:/tmp/chemistry-export tools/export_posttrain.nim
           python tools/test_prompt_variants.py /tmp/chemistry-bridge
           python tools/test_prompt_socket_games.py /tmp/chemistry-game /tmp/chemistry-socket-games "$GITHUB_SHA"
+          python tools/test_prompt_socket_games.py /tmp/chemistry-game /tmp/chemistry-native-failure "$GITHUB_SHA" --native-failure
           python tools/test_prompt_export.py /tmp/chemistry-export /tmp/chemistry-export-games
 
   # ---------------------------------------------------------------------

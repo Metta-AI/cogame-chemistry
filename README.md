@@ -180,7 +180,9 @@ python tools/test_prompt_export.py /absolute/path/to/export /new/private/output
 Supply the original bridge as a second argument to the variant check for canonical
 byte parity. Socket checks disable providers, connect eight external players, run
 ordinary full-length games, and validate received messages against private records.
-They stop their own server after final frames and artifacts, during its unchanged
+Append `--native-failure` to run complete native prompt games against a closed
+localhost port. That case checks both retry prompts and courier fallback without
+calling a model. These checks stop their own server after final frames and artifacts, during its unchanged
 shutdown grace; Docker CI separately covers natural exit.
 
 For a model study, freeze source, model, operator strategy, variants, game seeds,

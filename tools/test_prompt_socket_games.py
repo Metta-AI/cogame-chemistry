@@ -11,7 +11,7 @@ import sys
 import websockets
 
 
-async def play(binary, folder, configuration, revision):
+async def play(binary, folder, configuration, revision, native_failure):
     folder.mkdir(mode=0o700)
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
@@ -36,6 +36,8 @@ async def play(binary, folder, configuration, revision):
         COGAME_SAVE_TRAJECTORY_URI=(folder / "prompts.jsonl").as_uri(),
         COWORLD_SOURCE_REVISION=revision,
     )
+    if native_failure:
+        environment["COWORLD_LLM_ENDPOINT"] = "http://127.0.0.1:9/"
     received = {}
     with (folder / "game.log").open("w") as log:
         process = await asyncio.create_subprocess_exec(
@@ -58,10 +60,9 @@ async def play(binary, folder, configuration, revision):
                             assert frame["protocol"] == "chemistry.player.v2"
                             await connection.send(
                                 json.dumps(
-                                    {
-                                        "type": "register",
-                                        "control": "external",
-                                    }
+                                    {"type": "prompt", "prompt": ""}
+                                    if native_failure
+                                    else {"type": "register", "control": "external"}
                                 )
                             )
                         elif frame["type"] == "observation":
@@ -126,15 +127,15 @@ async def play(binary, folder, configuration, revision):
     summary = events.pop()
     assert summary["kind"] == "episode" and summary["reason"] == "complete"
     assert summary["source_revision"] == revision
-    assert len(events) == summary["records"] == config["shifts"] * 8
-    systems, users = {}, {}
+    assert (
+        len(events)
+        == summary["records"]
+        == config["shifts"] * 8 * (3 if native_failure else 1)
+    )
+    systems, users, requests = {}, {}, {}
     for event in events:
         assert event["schema"] == "chemistry.prompt-provenance.v1"
-        assert (
-            event["kind"] == "prompt"
-            and event["scope"] == "configured_prompt"
-            and event["attempt"] == 0
-        )
+        assert event["kind"] == "prompt"
         metadata = event["prompt_template"]
         assert metadata["bank"] == summary["prompt_bank"] == "chemistry-rules-v1"
         assert metadata["variant"] == summary["prompt_variant"]
@@ -149,10 +150,26 @@ async def play(binary, folder, configuration, revision):
         system, user = [message["content"] for message in event["messages"]]
         assert systems.setdefault(event["seat"], system) == system
         key = event["shift"], event["seat"]
-        assert (event["messages"], metadata) == received[key]
-        assert key not in users
-        users[key] = user
-    assert set(users) == set(received)
+        if event["scope"] == "request":
+            assert native_failure and event["attempt"] in (0, 1)
+            attempt_key = key, event["attempt"]
+            assert attempt_key not in requests
+            requests[attempt_key] = user
+        else:
+            assert event["scope"] == "configured_prompt" and event["attempt"] == 0
+            if not native_failure:
+                assert (event["messages"], metadata) == received[key]
+            assert key not in users
+            users[key] = user
+    if native_failure:
+        assert not received
+        assert set(requests) == {(key, attempt) for key in users for attempt in (0, 1)}
+        for key, user in users.items():
+            assert requests[key, 0] == user
+            assert requests[key, 1].startswith(user)
+            assert "Your previous reply was invalid" in requests[key, 1][len(user) :]
+    else:
+        assert set(users) == set(received)
     assert set(users) == {
         (turn, seat) for turn in range(config["shifts"]) for seat in range(8)
     }
@@ -164,7 +181,11 @@ async def play(binary, folder, configuration, revision):
 
 
 async def main():
-    binary, destination, revision = sys.argv[1:]
+    binary, destination, revision = sys.argv[1:4]
+    assert len(sys.argv) in (4, 5)
+    native_failure = len(sys.argv) == 5
+    if native_failure:
+        assert sys.argv[4] == "--native-failure"
     root = Path(destination).resolve()
     root.mkdir(mode=0o700, parents=True, exist_ok=False)
     manifest = json.loads(
@@ -181,14 +202,16 @@ async def main():
         "heldout-briefing",
         "heldout-reference",
     ]
+    if native_failure:
+        templates = ["canonical", "plain", "heldout-briefing"]
+    selections = [(name, 0) for name in templates]
+    if not native_failure:
+        selections.extend(("mixed", i) for i in range(5))
     reports = []
     for variant in manifest["variants"]:
-        for seed in (17, 946001):
+        for seed in (17,) if native_failure else (17, 946001):
             direct = []
-            for selection, prompt_seed in [
-                *((name, 0) for name in templates),
-                *(("mixed", i) for i in range(5)),
-            ]:
+            for selection, prompt_seed in selections:
                 name = f"{variant['id']}-{seed}-{selection}-{prompt_seed}"
                 run = await play(
                     binary,
@@ -201,6 +224,7 @@ async def main():
                         "promptSeed": prompt_seed,
                     },
                     revision,
+                    native_failure,
                 )
                 if direct:
                     assert run[:2] == direct[0][:2], (
@@ -215,11 +239,15 @@ async def main():
                     {"game": name, "decisions": len(run[0]), "selected": run[3]}
                 )
             for seat in range(8):
-                assert len({run[2][seat] for run in direct}) == 7
+                assert len({run[2][seat] for run in direct}) == len(templates)
     (root / "report.json").write_text(json.dumps(reports, indent=2) + "\n")
     print(
         json.dumps(
-            {"completed_games": len(reports), "templates": 7, "output": str(root)}
+            {
+                "completed_games": len(reports),
+                "templates": len(templates),
+                "output": str(root),
+            }
         )
     )
 

@@ -34,10 +34,6 @@ const
   BedrockAnthropicVersion = "bedrock-2023-05-31"
 
 type
-  DecisionBatch* = object
-    orders*: seq[Order]
-    promptEvidence*: seq[JsonNode] ## Prompt intent only, not proof of model generation.
-
   LlmTransport = enum
     ltNone, ltSidecar, ltBedrock, ltAnthropic
 
@@ -340,32 +336,35 @@ proc graphTable(sim: Sim): string =
       $reactor.feed[1] & " | glitter, quartz")
   lines.join("\n")
 
-proc canonicalPrompt(sim: Sim, slot: int): string =
+proc systemPrompt*(sim: Sim, slot: int): string =
   let cog = sim.cogs[slot]
-  result.add("You are " & cog.alias.toUpperAscii() &
-    ", one of eight cogs working a chemistry floor.\n")
-  result.add("""
+  let introduction = "You are " & cog.alias.toUpperAscii() &
+    ", one of eight cogs working a chemistry floor.\n"
+  let room = """
 THE ROOM: a fixed 32x18 grid. Walls ring the edge and two 2x2 pillars sit in
 the middle. Three vats (reactors) sit on 3x3 pads. Vents emit loose molecules
 onto the floor. Cells are (col, row) with the origin at the top left.
 
-WHAT YOU CONTROL: you do NOT emit per-tick moves. Once per SHIFT (60 ticks)
+"""
+  let control = """WHAT YOU CONTROL: you do NOT emit per-tick moves. Once per SHIFT (60 ticks)
 you choose ONE standing order, and a deterministic courier kernel walks it for
 you: it paths, picks up, carries and drops. Your per-tick action vocabulary --
 move_n, move_s, move_e, move_w, take, drop, wait -- is what the kernel emits
 on your behalf. You carry AT MOST ONE molecule (carryCap 1) and may move once
 every """ & $sim.config.moveCooldown & """ ticks.
 
-THE JOBS:
+"""
+  let jobs = """THE JOBS:
 - supply: fetch the named molecule and drop it into the named vat's stock.
 - forage: walk to loose food, or camp the named vat's spill ring and wait.
 - hoard: fetch the named molecule and stack it on your own home cell. Hoarding
   scores NOTHING, ever.
 - idle: stand still.
 
-THE REACTION GRAPH:
-""" & sim.graphTable() & "\n")
-  result.add("""
+"""
+  let graph = """THE REACTION GRAPH:
+""" & sim.graphTable() & "\n"
+  let mechanics = """
 - A vat reacts when its charge is at least 1, its cooldown is 0 and BOTH its
   feedstocks are in stock: it consumes 1 of each, gains 1 charge (max """ &
     $sim.config.chargeMax & """) and drops 1 + charge div 3 FOOD tokens.
@@ -383,46 +382,33 @@ THE REACTION GRAPH:
 - INERT species do nothing at all. They can be carried and hoarded, and they
   are a trap.
 
-SCORING: your score is the number of FOOD tokens YOU eat. Food is eaten
+"""
+  let scoring = """SCORING: your score is the number of FOOD tokens YOU eat. Food is eaten
 automatically by standing on it -- eating is not an action. New tokens appear
 on the spill ring nearest the cog that delivered the molecule which triggered
 the reaction, so working pays at your own feet. A token rots after """ &
     $sim.config.foodLifetime & """ ticks. Nothing else scores: deliveries,
 hoards and misdrops are reported but never ranked.
 
-THE OTHER SEVEN COGS are other policies deciding SIMULTANEOUSLY with you. You
+"""
+  let communication = """THE OTHER SEVEN COGS are other policies deciding SIMULTANEOUSLY with you. You
 never learn their names, their prompts or the order they are about to give.
 Your `say` (max """ & $MaxSayLen & """ characters) is broadcast to all of them
 and reaches them in NEXT shift's observation. Your `notes` (max """ &
     $MaxNotesLen & """ characters) are private and come back only to you.
 
-""")
-  result.add("Reply with one JSON object: {\"job\": <" & legalJobs() &
+"""
+  let outputFormat = "Reply with one JSON object: {\"job\": <" & legalJobs() &
     ">, \"molecule\": <" & sim.legalMolecules() & ">, \"reactor\": <" &
-    sim.legalReactors() & ">, \"say\": \"...\", \"notes\": \"...\"}.\n")
-  result.add("`molecule` is required for supply and hoard; `reactor` is " &
-    "required for supply.\n\n")
-  result.add("""OUTPUT FORMAT: reply with ONLY one JSON object, nothing else - no analysis, no explanation, no markdown fences, no text before or after the object. Your reply must begin with the character { and end with }.""")
+    sim.legalReactors() & ">, \"say\": \"...\", \"notes\": \"...\"}.\n" &
+    "`molecule` is required for supply and hoard; `reactor` is " &
+    "required for supply.\n\n" &
+    """OUTPUT FORMAT: reply with ONLY one JSON object, nothing else - no analysis, no explanation, no markdown fences, no text before or after the object. Your reply must begin with the character { and end with }."""
 
-proc systemPrompt*(sim: Sim, slot: int): string =
-  let canonical = canonicalPrompt(sim, slot)
   if sim.config.selectedPromptVariant == pvCanonical:
-    return canonical
-  # These game-owned section boundaries keep numerical rules and legal values
-  # verbatim while the templates own explanatory wording and section order.
-  let markers = ["THE ROOM:", "WHAT YOU CONTROL:", "THE JOBS:",
-    "THE REACTION GRAPH:", "- A vat reacts", "SCORING:",
-    "THE OTHER SEVEN COGS", "Reply with one JSON object:"]
-  var offsets: array[8, int]
-  for index, marker in markers:
-    offsets[index] = canonical.find(marker)
-    doAssert offsets[index] >= 0
-    if index > 0: doAssert offsets[index] > offsets[index - 1]
-  renderVariantPrompt(sim.config, [sim.cogs[slot].alias.toUpperAscii(),
-    canonical[offsets[0] ..< offsets[1]], canonical[offsets[1] ..< offsets[2]],
-    canonical[offsets[3] ..< offsets[4]], canonical[offsets[4] ..< offsets[5]],
-    canonical[offsets[5] ..< offsets[6]], canonical[offsets[7] .. ^1],
-    $MaxSayLen, $MaxNotesLen])
+    return introduction & room & control & jobs & graph & mechanics & scoring & communication & outputFormat
+  renderVariantPrompt(sim.config, [cog.alias.toUpperAscii(), room, control, graph,
+    mechanics, scoring, outputFormat, $MaxSayLen, $MaxNotesLen])
 
 proc operatorBlock(prompt: string): string =
   if prompt.len == 0:
@@ -623,32 +609,24 @@ const RetryHint = "\nYour previous reply was invalid. Respond with ONLY " &
   "the requested JSON object, using one of the listed job, molecule and " &
   "reactor values."
 
-proc promptRecord(sim: Sim, slot, attempt: int, scope, system, user: string): JsonNode =
-  %*{"schema": "chemistry.prompt-provenance.v1", "kind": "prompt", "scope": scope,
-    "seat": slot, "shift": sim.shift, "attempt": attempt,
-    "prompt_template": promptMetadata(sim.config, system, user),
-    "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
-
 proc decideAll*(
   client: LlmClient,
   sim: Sim,
   prompts: seq[string],
   scripted: seq[ScriptKind]
-): DecisionBatch =
-  ## One standing order per seat, with private prompt intent. Provider failures
-  ## fall back to courier; game-owned prompt rendering errors propagate.
-  result.orders = newSeq[Order](Seats)
+): seq[Order] =
+  ## One standing order per seat, in slot order. Never raises: any failure
+  ## falls back to the `courier` order so the episode always advances.
+  result = newSeq[Order](Seats)
   var open: seq[int]
   for slot in 0 ..< Seats:
-    result.promptEvidence.add(promptRecord(sim, slot, 0, "configured_prompt",
-      systemPrompt(sim, slot), userPrompt(sim, slot, prompts[slot])))
     let kind = scripted[slot]
     ## A seat that never connected, or whose socket died mid-episode, plays
     ## `courier` for every remaining shift: there is no operator behind it to
     ## prompt, so an LLM call would spend the budget on an empty guidance
     ## block. The server owns `connected`.
     if kind != skNone or client.disabled or not sim.cogs[slot].connected:
-      result.orders[slot] = sim.scriptedOrder(slot,
+      result[slot] = sim.scriptedOrder(slot,
         (if kind == skNone: skCourier else: kind))
     else:
       open.add slot
@@ -663,9 +641,7 @@ proc decideAll*(
       var user = sim.userPrompt(slot, prompts[slot])
       if attempt > 0:
         user.add(RetryHint)
-      let system = sim.systemPrompt(slot)
-      result.promptEvidence.add(promptRecord(sim, slot, attempt, "request", system, user))
-      let request = client.requestFor(system, user, slot)
+      let request = client.requestFor(sim.systemPrompt(slot), user, slot)
       batch.post(request.url, request.headers, request.body, $slot)
     if attempt == 0:
       client.lastBatchSize = batch.len
@@ -680,7 +656,7 @@ proc decideAll*(
         var order = sim.parseDecision(extractJsonObject(text))
         order.source = (if attempt == 0: osLlm else: osRetry)
         order.latencyMs = latencyMs
-        result.orders[slot] = order
+        result[slot] = order
       except CatchableError as error:
         echo "chemistry llm: seat ", slot, " attempt ", attempt, " failed: ",
           errorText(error.msg)
@@ -688,5 +664,5 @@ proc decideAll*(
     open = stillOpen
   for slot in open:
     echo "chemistry llm: seat ", slot, " falling back to scripted order"
-    result.orders[slot] = sim.courierOrder(slot)
-    result.orders[slot].source = osFallback
+    result[slot] = sim.courierOrder(slot)
+    result[slot].source = osFallback

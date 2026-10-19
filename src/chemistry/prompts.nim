@@ -1,4 +1,4 @@
-## Episode wording and private message hashes, independent of music RNG.
+## Episode wording and private message hashes, independent of simulation randomness.
 import std/[json, strutils]
 import crunchy
 import sim_config

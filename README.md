@@ -124,29 +124,19 @@ Design note: [`docs/plans/2026-08-25-chemistry-design.md`](docs/plans/2026-08-25
 are `canonical`, `plain`, `numbered`, `questions`, and `reordered`. `mixed` selects
 `promptSeed mod 5` in that order and requires an explicit nonnegative integer
 `promptSeed`. This seed never consumes simulation randomness. Defaults remain
-canonical. Reserve `heldout-briefing` and `heldout-reference` for hosted evaluation;
-the training bridge and exporter reject them.
+canonical. Held-out wordings require `split: validation` on language resets;
+the exporter rejects them.
 
 Bank `chemistry-rules-v1` varies role, job, and communication explanations and
 section order. Numerical mechanics, scoring, room/control details, reaction graphs,
-and legal response values come verbatim from the canonical renderer. Change the
+and legal response values use shared named prompt sections. Change the
 bank version whenever wording changes. Operator guidance stays separate.
 
 External `chemistry.player.v2` observation frames include the exact system/user
 `messages` and seat-local `observation.prompt_template`. Metadata contains `bank`,
 resolved `variant`, requested `selection`, `seed`, and exact UTF-8 message hashes
 `system_sha256` and `user_sha256`. Public state frames, results, and replays do not
-include this metadata or the new private records.
-
-The hosted game writes `chemistry.prompt-provenance.v1` JSONL to
-`COGAME_SAVE_TRAJECTORY_URI` when configured. A `kind: prompt` record carries seat,
-zero-based shift, attempt, exact messages, and prompt metadata. `scope:
-configured_prompt` records intended context, including scripted/external seats;
-`scope: request` records a native request including retry instructions. Neither
-proves model generation or constitutes a native training trajectory. The final
-`kind: episode` record reports reason, scores, game seed, bank, selected wording,
-prompt seed, record count, and `COWORLD_SOURCE_REVISION`. Empty revisions are
-unqualified evidence. Store these records privately.
+include this metadata.
 
 Compile `tools/train_bridge.nim` with `nim c --path:src`. Use
 `tools/train_bridge coworld_manifest_template.json two-cycles --language` for text
@@ -161,29 +151,24 @@ Compile `tools/export_posttrain.nim`, then run from a clean committed checkout:
 tools/export_posttrain OUTPUT 10 1 two-cycles 0
 ```
 
-The final argument selects mixed export: five consecutive prompt seeds per game
-seed, starting at that value. Omit it for canonical export. All wordings and game
-variants share the family `chemistry-<seed>`; seeds divisible by five enter
-validation and the others enter training. Preserve that split when combining
-corpora. `prompt-provenance.jsonl` joins the unchanged training examples by
-`(episode_id, decision_id)`. The manifest records source, teacher, bank, wordings,
-and complete-game outcomes.
+The final argument selects mixed export and advances the prompt seed once per game,
+without multiplying the requested episode count. Omit it for canonical export.
+All wordings and game variants share the family `chemistry-<seed>`; seeds divisible
+by five enter validation and the others enter training. Preserve that split when
+combining corpora. The original training and validation files retain exact messages;
+the manifest records source, teacher, bank, selected wording and complete-game outcomes.
 
-Complete-flow checks use the real game and bridge:
+Complete-flow checks use the real bridge and exporter:
 
 ```bash
 python tools/test_prompt_variants.py /absolute/path/to/bridge
-python tools/test_prompt_socket_games.py /absolute/path/to/game /new/private/output SOURCE_REVISION
 python tools/test_prompt_export.py /absolute/path/to/export /new/private/output
 ```
 
-Supply the original bridge as a second argument to the variant check for canonical
-byte parity. Socket checks disable providers, connect eight external players, run
-ordinary full-length games, and validate received messages against private records.
-Append `--native-failure` to run complete native prompt games against a closed
-localhost port. That case checks both retry prompts and courier fallback without
-calling a model. These checks stop their own server after final frames and artifacts, during its unchanged
-shutdown grace; Docker CI separately covers natural exit.
+The 32 complete bridge games cover all four variants and every direct wording,
+including held-out evaluation, plus one mixed selection. Export checks compare
+20 canonical/mixed games per variant and verify scenario-family split separation.
+The existing native-client and Docker checks remain in place.
 
 For a model study, freeze source, model, operator strategy, variants, game seeds,
 seat/opponent assignments, and budgets. Compare canonical-trained and mixed-trained

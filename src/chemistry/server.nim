@@ -49,7 +49,6 @@ type
     pending: seq[bool]
     accepted: seq[bool]
     actions: seq[Order]
-    promptEvidence: seq[string]
     playerSockets: Table[int, WebSocket]
     socketSlots: Table[WebSocket, int]
     globalSockets: HashSet[WebSocket]
@@ -176,14 +175,6 @@ proc finishEpisode(runtimeConfig: RuntimeConfig) =
 
   sleep(500)
   echo "chemistry: writing results and replay"
-  let provenance = state.promptEvidence & @[$(%*{
-    "schema": "chemistry.prompt-provenance.v1", "kind": "episode", "reason": results["reason"],
-    "game_seed": state.config.seed, "prompt_bank": PromptBankVersion,
-    "prompt_variant": $state.config.selectedPromptVariant, "prompt_seed": state.config.promptSeed,
-    "source_revision": getEnv("COWORLD_SOURCE_REVISION"),
-    "records": state.promptEvidence.len, "scores": results["scores"]})]
-  writeArtifact(getEnv("COGAME_SAVE_TRAJECTORY_URI"), provenance.join("\n") & "\n",
-    "application/x-ndjson", "COGAME_SAVE_TRAJECTORY_METHOD")
   writeArtifact(runtimeConfig.resultsUri, $results, "application/json",
     "COGAME_RESULTS_METHOD")
   writeArtifact(runtimeConfig.replayUri, replayData, "application/json",
@@ -302,10 +293,7 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
       ## Prompt seats remain one parallel model batch; external seats keep a
       ## courier order until their own legal reply arrives.
       let batchStart = epochTime()
-      let batch = client.decideAll(simCopy, prompts, clientScripted)
-      var orders = batch.orders
-      withLock stateLock:
-        for record in batch.promptEvidence: state.promptEvidence.add($record)
+      var orders = client.decideAll(simCopy, prompts, clientScripted)
       let deadline = epochTime() + config.llmTimeoutSeconds.float
       while epochTime() < deadline:
         var waiting = false

@@ -279,9 +279,13 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
             state.pending[slot] = true
             state.accepted[slot] = false
             if state.playerSockets.hasKey(slot):
+              let system = systemPrompt(simCopy, slot)
+              let user = userPrompt(simCopy, slot, prompts[slot])
+              let observation = simCopy.observationJson(slot)
+              observation["prompt_template"] = promptMetadata(simCopy.config, system, user)
               state.playerSockets[slot].send($ %*{
-                "type": "observation", "id": state.decisionId,
-                "observation": simCopy.observationJson(slot)
+                "type": "observation", "id": state.decisionId, "observation": observation,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]
               })
           elif not state.registered[slot]:
             clientScripted[slot] = skCourier

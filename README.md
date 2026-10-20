@@ -117,3 +117,61 @@ fixture, and the static replay bundle **executed** in headless chromium against
 that episode's replay.
 
 Design note: [`docs/plans/2026-08-25-chemistry-design.md`](docs/plans/2026-08-25-chemistry-design.md).
+
+## Episode prompt diversity
+
+`promptVariant` selects a fixed wording for the whole episode. Training choices
+are `canonical`, `plain`, `numbered`, `questions`, and `reordered`. `mixed` selects
+`promptSeed mod 5` in that order and requires an explicit nonnegative integer
+`promptSeed`. This seed never consumes simulation randomness. Defaults remain
+canonical. Held-out wordings require `split: validation` on language resets;
+the exporter rejects them.
+
+Bank `chemistry-rules-v1` varies role, job, and communication explanations and
+section order. Numerical mechanics, scoring, room/control details, reaction graphs,
+and legal response values use shared named prompt sections. Change the
+bank version whenever wording changes. Operator guidance stays separate.
+
+External `chemistry.player.v2` observation frames include the exact system/user
+`messages` and seat-local `observation.prompt_template`. Metadata contains `bank`,
+resolved `variant`, requested `selection`, `seed`, and exact UTF-8 message hashes
+`system_sha256` and `user_sha256`. Public state frames, results, and replays do not
+include this metadata.
+
+Compile `tools/train_bridge.nim` with `nim c --path:src`. Use
+`tools/train_bridge coworld_manifest_template.json two-cycles --language` for text
+policies; teacher replies include the full standing order, speech, and notes.
+Without `--language`, the numeric policy interface keeps its existing action set.
+Reset accepts the two prompt-selection fields. Both interfaces attach private
+prompt metadata to each decision.
+
+Compile `tools/export_posttrain.nim`, then run from a clean committed checkout:
+
+```bash
+tools/export_posttrain OUTPUT 10 1 two-cycles 0
+```
+
+The final argument selects mixed export and cycles wordings independently within
+training and validation, without multiplying the requested episode count. Omit it for canonical export.
+All wordings and game variants share the family `chemistry-<seed>`; seeds divisible
+by five enter validation and the others enter training. Preserve that split when
+combining corpora. The original training and validation files retain exact messages;
+the manifest records source, teacher, bank, selected wording and complete-game outcomes.
+
+Complete-flow checks use the real bridge and exporter:
+
+```bash
+python tools/test_prompt_variants.py /absolute/path/to/bridge
+python tools/test_prompt_export.py /absolute/path/to/export /new/private/output
+```
+
+The 32 complete bridge games cover all four variants and every direct wording,
+including held-out evaluation, plus one mixed selection. Export checks compare
+20 canonical/mixed games per variant and verify scenario-family split separation.
+The existing native-client and Docker checks remain in place.
+
+For a model study, freeze source, model, operator strategy, variants, game seeds,
+seat/opponent assignments, and budgets. Compare canonical-trained and mixed-trained
+policies on identical held-out games. Report scores, invalid actions, retries,
+fallbacks, and completion rates separately. Scripted invariance checks cannot
+establish improved learning or reduced model collapse.

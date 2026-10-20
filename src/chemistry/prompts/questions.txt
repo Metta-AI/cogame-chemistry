@@ -1,0 +1,16 @@
+Who are you? $1, one of eight cogs sharing a chemistry floor.
+
+Where do you play?
+$2
+What do you control?
+$3
+Which job can you choose? Supply fetches a named molecule and drops it into a named vat's stock. Forage walks to loose food or camps the named vat's spill ring. Hoard stacks a named molecule at your own home cell but scores nothing, ever. Idle stands still.
+
+How do reactions work?
+$4$5
+How do you score?
+$6
+What do the others know? Seven other policies decide simultaneously with you. Their names, prompts, and next orders are never revealed. Your say message (up to $8 characters) reaches every other cog in NEXT shift's observation. Your notes (up to $9 characters) return only to you.
+
+How must you reply?
+$7

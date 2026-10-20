@@ -23,7 +23,10 @@ import
   std/[json, os, strutils, times],
   bitworld/runtime,
   curly,
-  sim
+  sim,
+  prompts
+
+export prompts
 
 const
   AnthropicUrl = "https://api.anthropic.com/v1/messages"
@@ -335,30 +338,33 @@ proc graphTable(sim: Sim): string =
 
 proc systemPrompt*(sim: Sim, slot: int): string =
   let cog = sim.cogs[slot]
-  result.add("You are " & cog.alias.toUpperAscii() &
-    ", one of eight cogs working a chemistry floor.\n")
-  result.add("""
+  let introduction = "You are " & cog.alias.toUpperAscii() &
+    ", one of eight cogs working a chemistry floor.\n"
+  let room = """
 THE ROOM: a fixed 32x18 grid. Walls ring the edge and two 2x2 pillars sit in
 the middle. Three vats (reactors) sit on 3x3 pads. Vents emit loose molecules
 onto the floor. Cells are (col, row) with the origin at the top left.
 
-WHAT YOU CONTROL: you do NOT emit per-tick moves. Once per SHIFT (60 ticks)
+"""
+  let control = """WHAT YOU CONTROL: you do NOT emit per-tick moves. Once per SHIFT (60 ticks)
 you choose ONE standing order, and a deterministic courier kernel walks it for
 you: it paths, picks up, carries and drops. Your per-tick action vocabulary --
 move_n, move_s, move_e, move_w, take, drop, wait -- is what the kernel emits
 on your behalf. You carry AT MOST ONE molecule (carryCap 1) and may move once
 every """ & $sim.config.moveCooldown & """ ticks.
 
-THE JOBS:
+"""
+  let jobs = """THE JOBS:
 - supply: fetch the named molecule and drop it into the named vat's stock.
 - forage: walk to loose food, or camp the named vat's spill ring and wait.
 - hoard: fetch the named molecule and stack it on your own home cell. Hoarding
   scores NOTHING, ever.
 - idle: stand still.
 
-THE REACTION GRAPH:
-""" & sim.graphTable() & "\n")
-  result.add("""
+"""
+  let graph = """THE REACTION GRAPH:
+""" & sim.graphTable() & "\n"
+  let mechanics = """
 - A vat reacts when its charge is at least 1, its cooldown is 0 and BOTH its
   feedstocks are in stock: it consumes 1 of each, gains 1 charge (max """ &
     $sim.config.chargeMax & """) and drops 1 + charge div 3 FOOD tokens.
@@ -376,26 +382,33 @@ THE REACTION GRAPH:
 - INERT species do nothing at all. They can be carried and hoarded, and they
   are a trap.
 
-SCORING: your score is the number of FOOD tokens YOU eat. Food is eaten
+"""
+  let scoring = """SCORING: your score is the number of FOOD tokens YOU eat. Food is eaten
 automatically by standing on it -- eating is not an action. New tokens appear
 on the spill ring nearest the cog that delivered the molecule which triggered
 the reaction, so working pays at your own feet. A token rots after """ &
     $sim.config.foodLifetime & """ ticks. Nothing else scores: deliveries,
 hoards and misdrops are reported but never ranked.
 
-THE OTHER SEVEN COGS are other policies deciding SIMULTANEOUSLY with you. You
+"""
+  let communication = """THE OTHER SEVEN COGS are other policies deciding SIMULTANEOUSLY with you. You
 never learn their names, their prompts or the order they are about to give.
 Your `say` (max """ & $MaxSayLen & """ characters) is broadcast to all of them
 and reaches them in NEXT shift's observation. Your `notes` (max """ &
     $MaxNotesLen & """ characters) are private and come back only to you.
 
-""")
-  result.add("Reply with one JSON object: {\"job\": <" & legalJobs() &
+"""
+  let outputFormat = "Reply with one JSON object: {\"job\": <" & legalJobs() &
     ">, \"molecule\": <" & sim.legalMolecules() & ">, \"reactor\": <" &
-    sim.legalReactors() & ">, \"say\": \"...\", \"notes\": \"...\"}.\n")
-  result.add("`molecule` is required for supply and hoard; `reactor` is " &
-    "required for supply.\n\n")
-  result.add("""OUTPUT FORMAT: reply with ONLY one JSON object, nothing else - no analysis, no explanation, no markdown fences, no text before or after the object. Your reply must begin with the character { and end with }.""")
+    sim.legalReactors() & ">, \"say\": \"...\", \"notes\": \"...\"}.\n" &
+    "`molecule` is required for supply and hoard; `reactor` is " &
+    "required for supply.\n\n" &
+    """OUTPUT FORMAT: reply with ONLY one JSON object, nothing else - no analysis, no explanation, no markdown fences, no text before or after the object. Your reply must begin with the character { and end with }."""
+
+  if sim.config.selectedPromptVariant == pvCanonical:
+    return introduction & room & control & jobs & graph & mechanics & scoring & communication & outputFormat
+  renderVariantPrompt(sim.config, [cog.alias.toUpperAscii(), room, control, graph,
+    mechanics, scoring, outputFormat, $MaxSayLen, $MaxNotesLen])
 
 proc operatorBlock(prompt: string): string =
   if prompt.len == 0:

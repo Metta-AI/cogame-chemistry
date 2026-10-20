@@ -231,8 +231,47 @@
           "description": "Draw the cog alias under its feet on the board.",
           "type": "boolean",
           "default": true
+        },
+        "promptVariant": {
+          "type": "string",
+          "enum": [
+            "canonical",
+            "plain",
+            "numbered",
+            "questions",
+            "reordered",
+            "heldout-briefing",
+            "heldout-reference",
+            "mixed"
+          ],
+          "default": "canonical",
+          "description": "Episode-stable rules wording; mixed selects only the five training templates."
+        },
+        "promptSeed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Independent wording seed. Required for mixed; never changes simulation randomness."
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "promptVariant"
+            ],
+            "properties": {
+              "promptVariant": {
+                "const": "mixed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "promptSeed"
+            ]
+          }
+        }
+      ]
     },
     "results_schema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -382,7 +421,7 @@
     "protocols": {
       "player": {
         "type": "text",
-        "value": "chemistry.player.v2, JSON text frames over WS /player?slot=N&token=T.\nGame sends welcome, seat-local state at shift boundaries, and final scores. A prompt or scripted player sends {\"type\":\"prompt\",\"prompt\":\"...\",\"scripted\":\"courier|freeloader|\"}.\nAn external player sends {\"type\":\"register\",\"control\":\"external\"}. At every simultaneous shift, the game sends {\"type\":\"observation\",\"id\":N,\"observation\":<the same seat state plus legalOrders>}. legalOrders lists exact standing-order IDs and their job, molecule and reactor fields. The player replies {\"type\":\"action\",\"id\":N,\"orderId\":\"exact offered ID\",\"say\":\"optional\",\"notes\":\"optional\"}. The game checks the current decision ID and legal menu, normalizes the order, and owns resolution, results and replay. Missing or invalid actions use the courier baseline."
+        "value": "chemistry.player.v2, JSON text frames over WS /player?slot=N&token=T.\nGame sends welcome, seat-local state at shift boundaries, and final scores. A prompt or scripted player sends {\"type\":\"prompt\",\"prompt\":\"...\",\"scripted\":\"courier|freeloader|\"}.\nAn external player sends {\"type\":\"register\",\"control\":\"external\"}. At every simultaneous shift, the game sends {\"type\":\"observation\",\"id\":N,\"observation\":<the same seat state plus legalOrders and private prompt_template>,\"messages\":[{\"role\":\"system\",\"content\":\"...\"},{\"role\":\"user\",\"content\":\"...\"}]}. legalOrders lists exact standing-order IDs and their job, molecule and reactor fields. The player replies {\"type\":\"action\",\"id\":N,\"orderId\":\"exact offered ID\",\"say\":\"optional\",\"notes\":\"optional\"}. The game checks the current decision ID and legal menu, normalizes the order, and owns resolution, results and replay. Missing or invalid actions use the courier baseline.\nThe private prompt_template identifies bank, selected variant, requested selection, prompt seed, and SHA-256 hashes of the exact two messages. Messages describe this seat only. Prompt provenance is not model-generation evidence."
       },
       "global": {
         "type": "text",

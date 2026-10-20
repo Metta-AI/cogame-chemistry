@@ -20,14 +20,9 @@ orders drive the simulator. Entire episodes stay in one split. The manifest
 records source revision, variant, scores, wins, and row counts. Existing output
 directories are never overwritten.
 
-Train an output with Metta post-training:
+Use the [post-training research package](https://github.com/Metta-AI/posttraining-research/tree/main/packages/metta-posttraining)
+for current training and adapter-packaging workflows.
 
-```sh
-nix develop -c uv run --package metta-posttrain --extra train \
-  python -m metta_posttrain.train --dataset /tmp/chemistry-two-cycles \
-  --output /tmp/chemistry-adapter --model Qwen/Qwen3-0.6B \
-  --max-steps 100 --max-length 4096
-```
 
 Ten complete episodes per variant yielded 768 training and 192 validation
 examples each. All 3,840 examples fit a 4,096-token context with the
@@ -56,3 +51,10 @@ comes from the hosted player's observation. Both views remain frozen while
 the eight seats decide simultaneously. The `courier` policy supplies opponents
 and teacher labels. Complete games return native food-eaten scores. Hosted
 prompts remain available to Metta post-training.
+
+## Matched prompt collections
+
+Append `FIRST_PROMPT_SEED` to the exporter command to cycle training wordings
+separately within each split. Omitting it uses the manifest prompt configuration.
+Episode IDs include requested selection, resolved wording, and prompt seed for
+both paths. Scenario-family IDs stay unchanged across matched collections.

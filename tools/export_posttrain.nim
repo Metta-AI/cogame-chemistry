@@ -59,7 +59,7 @@ when isMainModule:
     var sim = initSim(config)
     sim.logEnabled = false
     let episode = "chemistry-" & variant & "-" & $seed &
-      (if mixed: "-" & $config.selectedPromptVariant & "-" & $config.promptSeed else: "")
+      "-" & $config.promptVariant & "-" & $config.selectedPromptVariant & "-" & $config.promptSeed
     let family = "chemistry-" & $seed
     var rows: seq[string]
     while not sim.done:

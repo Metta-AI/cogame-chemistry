@@ -151,8 +151,8 @@ Compile `tools/export_posttrain.nim`, then run from a clean committed checkout:
 tools/export_posttrain OUTPUT 10 1 two-cycles 0
 ```
 
-The final argument selects mixed export and advances the prompt seed once per game,
-without multiplying the requested episode count. Omit it for canonical export.
+The final argument selects mixed export and cycles wordings independently within
+training and validation, without multiplying the requested episode count. Omit it for canonical export.
 All wordings and game variants share the family `chemistry-<seed>`; seeds divisible
 by five enter validation and the others enter training. Preserve that split when
 combining corpora. The original training and validation files retain exact messages;

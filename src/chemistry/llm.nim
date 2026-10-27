@@ -20,11 +20,11 @@
 ## deterministic. That fallback is load-bearing, not a convenience.
 
 import
-  std/[json, os, strutils, times],
+  std/[json, options, os, strutils, times],
   bitworld/runtime,
   curly,
   sim,
-  prompts
+  prompts, training
 
 export prompts
 
@@ -50,6 +50,7 @@ type
     maxOutputTokens: int
     timeoutSeconds: int
     disabled*: bool
+    nativeAttempts*: seq[seq[DecisionAttempt]]
     lastBatchSize*: int   ## seats carried by the most recent request batch
 
 proc resolveApiKey(): string =
@@ -618,6 +619,8 @@ proc decideAll*(
   ## One standing order per seat, in slot order. Never raises: any failure
   ## falls back to the `courier` order so the episode always advances.
   result = newSeq[Order](Seats)
+  let capture = getEnv(CogameSaveTrajectoryUriEnv).len > 0
+  if capture: client.nativeAttempts = newSeq[seq[DecisionAttempt]](Seats)
   var open: seq[int]
   for slot in 0 ..< Seats:
     let kind = scripted[slot]
@@ -637,11 +640,15 @@ proc decideAll*(
     ## ALL open seats in ONE parallel batch -- never sequentially. This is
     ## what keeps 12 shifts inside the 720 s play budget.
     var batch: RequestBatch
+    var pendingEvidence: seq[DecisionAttempt]
     for slot in open:
       var user = sim.userPrompt(slot, prompts[slot])
       if attempt > 0:
         user.add(RetryHint)
       let request = client.requestFor(sim.systemPrompt(slot), user, slot)
+      if capture:
+        pendingEvidence.add(nativeAttempt(sim.policyNames[slot], sim.shift,
+          slot, attempt, request.body))
       batch.post(request.url, request.headers, request.body, $slot)
     if attempt == 0:
       client.lastBatchSize = batch.len
@@ -650,17 +657,32 @@ proc decideAll*(
     let latencyMs = int((epochTime() - started) * 1000.0)
     var stillOpen: seq[int]
     for position, slot in open:
+      var evidence: DecisionAttempt
+      if capture: evidence = pendingEvidence[position]
       try:
+        if capture:
+          evidence.receiveNativeResponse(responses[position].response,
+            responses[position].error, latencyMs)
         let text = client.textOf(responses[position].response,
           responses[position].error, batch[position].url)
-        var order = sim.parseDecision(extractJsonObject(text))
+        let payload = extractJsonObject(text)
+        var order = sim.parseDecision(payload)
+        if capture:
+          evidence.parsedAction = order.orderAction()
+          evidence.accepted = not order.clamped and
+            payload{"say"}.getStr() == order.say and
+            payload{"notes"}.getStr() == order.notes
+          if not evidence.accepted:
+            evidence.rejectionReason = some("native parser clamped or shortened supplied fields")
         order.source = (if attempt == 0: osLlm else: osRetry)
         order.latencyMs = latencyMs
         result[slot] = order
       except CatchableError as error:
+        if capture: evidence.rejectionReason = some(error.msg)
         echo "chemistry llm: seat ", slot, " attempt ", attempt, " failed: ",
           errorText(error.msg)
         stillOpen.add slot
+      if capture: client.nativeAttempts[slot].add(evidence)
     open = stillOpen
   for slot in open:
     echo "chemistry llm: seat ", slot, " falling back to scripted order"

@@ -23,7 +23,7 @@ import
   mummy,
   mummy/routers,
   bitworld/spriteprotocol,
-  broadcast, global, llm, replays, sim, wire_constants
+  broadcast, global, llm, replays, sim, wire_constants, training
 
 const
   PlayBudgetFraction = 0.6
@@ -41,6 +41,7 @@ type
   GameState = object
     config: GameConfig
     sim: Sim
+    trajectory: DecisionTrajectory
     prompts: seq[string]
     scripted: seq[ScriptKind]
     external: seq[bool]
@@ -173,6 +174,8 @@ proc finishEpisode(runtimeConfig: RuntimeConfig) =
       socket.send($final)
     state.broadcastBoardLocked(newJArray())
 
+  # Seal private evidence before public success artifacts trigger player teardown.
+  state.trajectory.finishNativeTrajectory(state.sim)
   sleep(500)
   echo "chemistry: writing results and replay"
   writeArtifact(runtimeConfig.resultsUri, $results, "application/json",
@@ -292,6 +295,14 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
 
       ## Prompt seats remain one parallel model batch; external seats keep a
       ## courier order until their own legal reply arrives.
+      var captureViews: seq[JsonNode]
+      if not state.trajectory.isNil:
+        # Freeze every simultaneous private view before any action is applied.
+        for slot in 0 ..< Seats:
+          let view = simCopy.observationJson(slot)
+          view["prompt_template"] = promptMetadata(simCopy.config,
+            systemPrompt(simCopy, slot), userPrompt(simCopy, slot, prompts[slot]))
+          captureViews.add(view)
       let batchStart = epochTime()
       var orders = client.decideAll(simCopy, prompts, clientScripted)
       let deadline = epochTime() + config.llmTimeoutSeconds.float
@@ -322,6 +333,10 @@ proc runGame(runtimeConfig: RuntimeConfig) {.gcsafe.} =
         let before = state.sim.events.len
         for slot in 0 ..< Seats:
           state.sim.applyOrder(slot, orders[slot])
+          if not state.trajectory.isNil:
+            state.trajectory.recordAppliedDecision(config, simCopy.shift, slot,
+              simCopy.policyNames[slot], captureViews[slot],
+              state.sim.cogs[slot].order, client.nativeAttempts[slot])
         state.sim.runShift()
         var events = newJArray()
         for index in before ..< state.sim.events.len:
@@ -521,6 +536,7 @@ proc runGameServer*(config: GameConfig, runtimeConfig: RuntimeConfig) =
       "config must carry one token per seat (" & $config.numAgents & ")")
   state.config = config
   state.sim = initSim(config)
+  state.trajectory = initNativeTrajectory(config)
   state.prompts = newSeq[string](Seats)
   state.scripted = newSeq[ScriptKind](Seats)
   state.external = newSeq[bool](Seats)

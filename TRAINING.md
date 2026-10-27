@@ -58,3 +58,41 @@ Append `FIRST_PROMPT_SEED` to the exporter command to cycle training wordings
 separately within each split. Omitting it uses the manifest prompt configuration.
 Episode IDs include requested selection, resolved wording, and prompt seed for
 both paths. Scenario-family IDs stay unchanged across matched collections.
+
+
+## Native model trace collection
+
+The private `COGAME_SAVE_TRAJECTORY_URI` opt-in seals exact native model
+requests and received response text alongside authoritative applied orders.
+The existing Curly parallel batches, full observations, operator guidance,
+private notes, ordinary shifts, native retries, parser, fallback and game rules
+are preserved. Public results and replay are written after the private artifact.
+Without the private upload URI no trajectory is created.
+
+Every retry retains its actual request, generated response, received body,
+platform call ID, decoder fields and per-attempt prompt hashes. Supplied text
+never becomes a generated label. Responses whose native parser clamps reactor
+choices or shortens speech/notes remain evidence but have no selected model
+label. Existing scripted and unqualified external actions retain unknown origin;
+they are not relabeled as model demonstrations or reviewed teachers. Deadline
+endings are truncated rather than completed training episodes.
+
+Use the maintained `metta-posttrain collect-hosted` and `prepare-hosted-data`
+workflows for receipt-bound admission and Qwen mask auditing. Neither game
+capture nor a completed hosted game establishes data eligibility or learning.
+Source/image identity, exact provider receipts, prompt-bank exclusions, physical
+family partitioning and full native learner deployment require separate review.
+
+The complete system check runs all four manifest variants through loopback
+inference, with capture enabled and disabled. It exercises native retries,
+fallbacks, shortened/clamped actions, privacy, exact suffix/body equality and
+identical complete-game outcomes, including ordinary natural famine endings:
+
+```sh
+nim c -r --path:src tests/test_native_capture.nim
+```
+
+These synthetic protocol responses qualify software behavior; they are not
+real-model game traces and are never training data. Curly exposes decompressed
+response bodies and parsed headers; the capture does not invent raw HTTP headers,
+reader-state facts, token IDs or behavior likelihoods that it cannot observe.

@@ -2,7 +2,7 @@
 import std/[json, os, osproc, streams, strutils, tempfiles]
 import chemistry/[sim, llm, training]
 
-proc run(variant, destination: string): JsonNode =
+proc run(variant, destination: string, seed = 42): JsonNode =
   let provider = startProcess("python3", args = [
     currentSourcePath().parentDir() / "native_capture_provider.py"],
     options = {poUsePath, poStdErrToStdOut})
@@ -22,7 +22,7 @@ proc run(variant, destination: string): JsonNode =
   let manifest = parseFile(currentSourcePath().parentDir().parentDir() / "coworld_manifest_template.json")
   for item in manifest["variants"]:
     if item["id"].getStr() == variant: config.update($item["game_config"])
-  config.seed = 42
+  config.seed = seed
   config.llmTimeoutSeconds = 5
   var game = initSim(config)
   game.logEnabled = false
@@ -83,7 +83,7 @@ proc run(variant, destination: string): JsonNode =
     let last = parseJson(lines[^1])
     doAssert last["status"].getStr() == "completed"
     doAssert last["outcome"] == result
-    doAssert last["seed_family"].getStr() == "chemistry-42"
+    doAssert last["seed_family"].getStr() == nativeScenarioFamily(config)
     doAssert (getFilePermissions(destination) * {fpOthersRead, fpGroupRead}) == {}
 
 let output = createTempDir("chemistry-native-capture-", "")
@@ -92,3 +92,22 @@ for variant in ["two-cycles", "two-cycles-distractors", "three-cycles", "three-c
   let ordinary = run(variant, "")
   doAssert captured == ordinary, "private capture changed ordinary game outcomes"
 echo "eight complete native games: capture on/off outcomes match; retries, fallbacks, normalization and private source evidence pass"
+
+# A different seed changes only unused RNG state, not the v1 physical task.
+# Exercise another complete native game rather than manufacturing a holdout.
+let alternate = run("two-cycles", output / "two-cycles-alias.jsonl", 43)
+let original = parseJson(readFile(output / "two-cycles.jsonl").strip().splitLines()[^1])
+let aliased = parseJson(readFile(output / "two-cycles-alias.jsonl").strip().splitLines()[^1])
+doAssert original["seed_family"] == aliased["seed_family"]
+let baselineOutcome = copy(original["outcome"])
+let aliasOutcome = copy(alternate)
+if baselineOutcome.hasKey("seed"): baselineOutcome.delete("seed")
+if aliasOutcome.hasKey("seed"): aliasOutcome.delete("seed")
+doAssert baselineOutcome == aliasOutcome
+var families: seq[string]
+for variant in ["two-cycles", "two-cycles-distractors", "three-cycles", "three-cycles-plentiful-distractors"]:
+  let final = parseJson(readFile(output / (variant & ".jsonl")).strip().splitLines()[^1])
+  let family = final["seed_family"].getStr()
+  doAssert family notin families
+  families.add(family)
+echo "nine complete games: seed aliases grouped; four physical variants remain distinct"

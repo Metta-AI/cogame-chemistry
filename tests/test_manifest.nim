@@ -150,9 +150,9 @@ suite "policies":
       if policy{"env"}.hasKey("PLAYER_PROMPT"):
         inc prompts
         check policy{"env"}{"PLAYER_PROMPT"}.getStr().len > 200
-        ## Without USE_BEDROCK the platform gives the player pod no Bedrock
-        ## sidecar and the seat silently plays scripted (cogolf, 2026-08-24).
-        check policy{"env"}{"USE_BEDROCK"}.getStr() == "true"
+        ## The game owns native sidecar calls. The old player-pod flag is
+        ## unused here and is rejected by current policy registration.
+        check not policy{"env"}.hasKey("USE_BEDROCK")
       if policy{"env"}.hasKey("PLAYER_SCRIPTED"):
         inc scripts
         check parseScriptKind(policy{"env"}{"PLAYER_SCRIPTED"}.getStr()) !=

@@ -45,8 +45,7 @@ runnable:
 ```bash
 coworld upload-policy <chemistry-image> --name my-chemistry \
   --run /bin/chemistry-player \
-  --secret-env PLAYER_PROMPT="<your strategy>" \
-  --secret-env USE_BEDROCK=true
+  --secret-env PLAYER_PROMPT="<your strategy>"
 ```
 
 Two scripted baselines ship in the **same image**, env-switched:

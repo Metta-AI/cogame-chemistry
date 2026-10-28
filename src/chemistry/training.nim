@@ -1,7 +1,7 @@
 ## Private native-model evidence; rules, prompts, transport and parsing stay game-owned.
-import std/[json, options, os]
+import std/[json, options, os, strutils]
 import bitworld/decision_trajectory
-import curly
+import curly, crunchy
 import sim, prompts
 export decision_trajectory
 
@@ -10,9 +10,19 @@ proc orderAction*(order: Order): JsonNode =
   if order.hasMolecule: result["molecule"] = %($order.molecule)
   if order.hasReactor: result["reactor"] = %($order.reactor)
 
+proc nativeScenarioFamily*(config: GameConfig): string =
+  # The v1 kernel never consumes its seeded RNG. Replay rule/state descriptors
+  # identify physical scenarios; seed, wording and presentation do not.
+  let physical = config.configJson()
+  physical.delete("cell")
+  physical.delete("showPlayerLabels")
+  if config.distractorPeriod <= 0:
+    physical["distractorGroundCap"] = %0
+  "chemistry-physical-v1-" & sha256($physical).toHex.toLowerAscii()
+
 proc initNativeTrajectory*(config: GameConfig): DecisionTrajectory =
   if getEnv(CogameSaveTrajectoryUriEnv).len == 0: return nil
-  newDecisionTrajectory(getEnv("COWORLD_EPISODE_ID"), "chemistry-" & $config.seed,
+  newDecisionTrajectory(getEnv("COWORLD_EPISODE_ID"), nativeScenarioFamily(config),
     "chemistry", getEnv("COWORLD_GAME_VERSION"), getEnv("COWORLD_SOURCE_REVISION"))
 
 proc nativeAttempt*(policy: string, shift, seat, retry: int, body: string): DecisionAttempt =

@@ -96,3 +96,19 @@ These synthetic protocol responses qualify software behavior; they are not
 real-model game traces and are never training data. Curly exposes decompressed
 response bodies and parsed headers; the capture does not invent raw HTTP headers,
 reader-state facts, token IDs or behavior likelihoods that it cannot observe.
+
+
+## Physical-family qualification
+
+The v1 kernel stores a seeded RNG but does not consume it. Different seeds do
+not supply independent physical worlds. New native traces hash the replay's
+complete rule/state descriptor, excluding display-only fields and normalizing an
+inactive distractor cap. They group seed and wording aliases together while
+separating the four advertised physical variants. Ordinary rules and horizons do
+not change. The complete native system check verifies a ninth seed-alias game.
+
+The earlier seed-based teacher split/counts above are historical measurements,
+not independent validation evidence. That exporter remains an unapproved teacher
+candidate and requires physical-family repartitioning before reuse. Stored native
+0.1.5 captures also retain their original seed labels and need explicit family
+review; no historical trace or result is rewritten by this metadata correction.
